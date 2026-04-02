@@ -11,40 +11,59 @@ import (
 )
 
 type mockStorage struct {
-	capturedContent string
+	LastContent string
+	LastKey     string
 }
 
-func (m *mockStorage) PutObject(_ context.Context, _ string, r io.Reader, _ int64) error {
-	buf := new(strings.Builder)
-	io.Copy(buf, r)
-	m.capturedContent = buf.String()
+func (m *mockStorage) PutObject(ctx context.Context, key string, r io.Reader, size int64) error {
+	m.LastKey = key
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	m.LastContent = string(data)
 	return nil
 }
 
-func (m *mockStorage) GetObject(_ context.Context, _ string) (io.ReadCloser, error) {
-	return nil, nil
+func (m *mockStorage) GetObject(ctx context.Context, key string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader(m.LastContent)), nil
 }
 
 func TestSendBatch(t *testing.T) {
-	storage := &mockStorage{}
-	p := New(Options{Storage: storage, Prefix: "test"})
+	const fixedID = "FIXED_ID_FOR_TESTING_1234567"
 
-	msgs := []pulsix.Message{
+	// This is the exact string the encoder produces with your fixed ID
+	// p1:59:m:45:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:5:hello
+	// Breakdown:
+	// m tag: "m:45:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}" (50 bytes)
+	// d tag: "d:5:hello" (9 bytes)
+	// Total body: 59 bytes.
+	wantRecord1 := `p1:59:m:45:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:5:hello`
+	wantRecord2 := `p1:60:m:45:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:6:pulsix`
+	fullExpected := wantRecord1 + wantRecord2
+
+	mockStore := &mockStorage{}
+	pub := New(Options{
+		Storage: mockStore,
+		Prefix:  "test",
+		GenerateIDFunc: func() string {
+			return fixedID
+		},
+	})
+
+	messages := []pulsix.Message{
 		{Data: []byte("hello")},
 		{Data: []byte("pulsix")},
 	}
 
-	// Expected:
-	// p1:9:d:5:hello (4+1+1+1+2 + 5 = 9 internal, total string is 11)
-	// p1:10:d:6:pulsix
-	err := p.SendBatch(context.Background(), msgs)
+	err := pub.SendBatch(context.Background(), messages)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("SendBatch failed: %v", err)
 	}
 
-	expected := "p1:9:d:5:hellop1:10:d:6:pulsix"
-	if storage.capturedContent != expected {
-		t.Errorf("expected content %q, got %q", expected, storage.capturedContent)
+	got := mockStore.LastContent
+	if got != fullExpected {
+		t.Errorf("\nexpected: %s\ngot:      %s", fullExpected, got)
 	}
 }
 

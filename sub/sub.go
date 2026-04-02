@@ -179,9 +179,17 @@ func (b *Batch) parseTLVs(data []byte) bool {
 			b.current.Data = value
 			found = true
 		case 'm':
-			// Assuming Metadata has a field for the raw string identifier
-			// Adjust this field name to match your actual pulsix.Metadata struct
-			b.current.Metadata.MessageID = string(value)
+
+			// The publisher sends: {"message_id":"XYZ"}
+			// We want to extract just "XYZ" for the struct field.
+			var temp pulsix.Metadata
+			if err := json.Unmarshal(value, &temp); err == nil && temp.MessageID != "" {
+				b.current.Metadata.MessageID = temp.MessageID
+			} else {
+				// Fallback to raw string if JSON unmarshal fails
+				b.current.Metadata.MessageID = string(value)
+			}
+
 		case 'a':
 			// The P1 format stores attributes as a JSON object string.
 			// We unmarshal that directly into our map.

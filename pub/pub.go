@@ -33,15 +33,24 @@ type Pub struct {
 
 // Options defines the configuration for the Pub struct.
 type Options struct {
-	Storage pulsix.Storage
-	Prefix  string
+	Storage        pulsix.Storage
+	Prefix         string
+	GenerateIDFunc func() string
 }
 
 // New creates a new Pub instance with the provided Storage implementation.
 func New(options Options) *Pub {
+	if options.GenerateIDFunc == nil {
+		options.GenerateIDFunc = generateID
+	}
 	return &Pub{
 		options: options,
 	}
+}
+
+func generateID() string {
+	id, _ := ksuid.NewRandom()
+	return id.String()
 }
 
 // generatePulsixKey generate a key in this format:
@@ -76,9 +85,9 @@ func (p *Pub) SendBatch(ctx context.Context, messages []pulsix.Message) error {
 			pw.CloseWithError(err)
 		}()
 
-		for i := range messages {
-			// EncodeTLV now handles the p1:len: and all internal TLVs
-			if err = messages[i].EncodeTLV(pw); err != nil {
+		for _, m := range messages {
+			m.Metadata.MessageID = p.options.GenerateIDFunc()
+			if err = m.EncodeTLV(pw); err != nil {
 				return
 			}
 		}

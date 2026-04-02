@@ -48,10 +48,17 @@ func main() {
 			for b.Next() {
 				msg := b.Message()
 				fmt.Printf("  📩 Msg: %s\n", string(msg.Data))
+
+				// Print the MessageID from the Metadata struct
+				if msg.Metadata.MessageID != "" {
+					fmt.Printf("     Metadata ID: %s\n", msg.Metadata.MessageID)
+				}
+
 				if len(msg.Attributes) > 0 {
-					fmt.Printf("     Attrs: %v\n", msg.Attributes)
+					fmt.Printf("     Attributes: %v\n", msg.Attributes)
 				}
 			}
+
 			if err := b.Error(); err != nil {
 				log.Printf("  ❌ Stream error: %v", err)
 			}

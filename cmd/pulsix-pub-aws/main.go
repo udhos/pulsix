@@ -43,8 +43,8 @@ func main() {
 
 	// 5. Define messages
 	messages := []pulsix.Message{
-		{Data: []byte(`{"event": "login", "user": "alice"}`)},
-		{Data: []byte(`{"event": "click", "button": "buy"}`)},
+		{Data: []byte(`{"event": "login", "user": "alice"}`), Attributes: map[string]string{"key1": "val1"}},
+		{Data: []byte(`{"event": "click", "button": "buy"}`), Attributes: map[string]string{"key2": "val2"}},
 	}
 
 	for i, msg := range messages {

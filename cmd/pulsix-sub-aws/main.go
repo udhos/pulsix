@@ -56,6 +56,13 @@ func main() {
 			for b.Next() {
 				msg := b.Message()
 				fmt.Printf("  📩 Msg: %s\n", string(msg.Data))
+
+				// Show Metadata
+				if msg.Metadata.MessageID != "" {
+					fmt.Printf("     Meta ID: %s\n", msg.Metadata.MessageID)
+				}
+
+				// Show Attributes
 				if len(msg.Attributes) > 0 {
 					fmt.Printf("     Attrs: %v\n", msg.Attributes)
 				}
