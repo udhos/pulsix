@@ -44,54 +44,60 @@ Consumers listen for SQS notifications and fetch the corresponding batch of mess
 
 3 - Every record has this format:
 
+```bash
 <2-bytes version><record>
+```
 
 4 - The first version we define is `p1` (pulsix version 1). So the first two bytes of every record are `0x70 0x31` (ASCII "p1").
 
 5 - p1 record is defined as:
 
+```bash
 p1:<total_record_length>:<tlv1><tlv2>...<tlvn>
+```
 
-<total_record_length> is the total length in ascii decimal, like "1234".
+`<total_record_length>` is the total length in ascii decimal, like "1234".
 
-<total_record_length> is always surrounded by `:`.
+`<total_record_length>` is always surrounded by `:`.
 
-The total_record_length accounts exactly the full number of bytes AFTER the ':' that follows the total_record_length, and up to-and-including the last TLV byte of the record.
+The total_record_length accounts exactly the full number of bytes AFTER the `:` that follows the total_record_length, and up to-and-including the last TLV byte of the record.
 
-That is to say the total_record_length is the byte-length of the list of TLVs, but excluding the 2 bytes of version and the total_record_length field itself.
-
-If the parser wants to skip a record, it can simply read the version and total_record_length, and then skip total_record_length bytes to jump to the next record.
+That is to say the total_record_length is the byte-length of the list of TLVs, excluding the 2 bytes of version and the `<total_record_length>:` field itself.
 
 tlv is defined as:
 
+```bash
 <type>:<length>:<value>
+```
 
-type is 1 byte, but we start ascii friendly, so we define 3 types for now:
+`<type>` is 1 byte. we define 3 types that are ascii friendly for now:
 
-Ascii 'm' means internal metadata.
-Ascii 'a' means user attributes.
-Ascii 'd' means the actual message data.
+Type 'm' means internal metadata.
+Type 'a' means user attributes.
+Type 'd' means the actual user message data.
 
 Length is the length of the value in ascii decimal, like "1234".
 Length is always surrounded by `:`.
 Similar to total_record_length, the length field accounts exactly the byte-length of the value field.
 
-If the parser wants to skip a tlv, it can simply read the type and length, and then skip length bytes to jump to the next tlv.
+### Storage Format Example
 
-Example:
+**Input Data:**
+- User Attributes: `{"a":"b"}` (9 bytes)
+- User Data: `hello` (5 bytes)
 
-```bash
-user attributes: {"a":"b"}
-user data:       hello
+**Breakdown:**
+- **Prefix:** `p1:22:` (The `22` represents the sum of all TLV bytes following this colon)
+- **TLV 1 (Attributes):** `a:9:{"a":"b"}` (4 bytes of overhead + 9 bytes value = 13 bytes)
+- **TLV 2 (Data):** `d:5:hello` (4 bytes of overhead + 5 bytes value = 9 bytes)
 
-header: p1:22:
-tlv1:   a:9:{"a":"b"}
-tlv2:   d:5:hello
+**Final Wire Record:**
+`p1:22:a:9:{"a":"b"}d:5:hello`
 
-record:
+**Multiple Messages per Record:**
+If a producer batches two identical messages into one record, the length doubles and TLVs repeat:
+`p1:44:a:9:{"a":"b"}d:5:helloa:9:{"a":"b"}d:5:hello`
 
-p1:22:a:9:{"a":"b"}d:5:hello
-```
 
 # How to setup cross-account access
 
