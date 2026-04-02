@@ -1,6 +1,6 @@
 # pulsix
 
-[pulsix](https://github.com/udhos/pulsix) is a high-performance, serverless streaming framework built on S3 as Blob Storage and on SQS as Reliable Notification Service.
+[pulsix](https://github.com/udhos/pulsix) is a high-performance streaming framework built on S3 as Blob Storage and on SQS as Reliable Notification Service.
 
 We only support AWS for now.
 
