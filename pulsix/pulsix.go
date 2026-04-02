@@ -10,10 +10,6 @@ import (
 	"path/filepath"
 )
 
-// HeaderPrefix is used to identify the size of a message in the batch.
-// The format is: "\nPULSIX-SIZE:<size>\n<payload>"
-const HeaderPrefix = "PULSIX-SIZE:"
-
 // Storage abstracts the S3-specific calls.
 // Using io.Reader allows for zero-copy streaming to S3.
 type Storage interface {

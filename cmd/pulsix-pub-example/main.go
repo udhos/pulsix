@@ -36,9 +36,10 @@ func main() {
 
 	// 3. Send a Batch
 	ctx := context.Background()
-	messages := [][]byte{
-		[]byte(`{"event": "login", "user": "alice"}`),
-		[]byte(`{"event": "click", "button": "buy"}`),
+
+	messages := []pulsix.Message{
+		{Data: []byte(`{"event": "login", "user": "alice"}`)},
+		{Data: []byte(`{"event": "click", "button": "buy"}`)},
 	}
 
 	fmt.Println("🚀 Pulsix Producer starting...")

@@ -41,14 +41,14 @@ func main() {
 		Prefix:  "events",
 	})
 
-	// 5. Define messages to "Pulse"
-	messages := [][]byte{
-		[]byte(`{"event": "login", "user": "alice"}`),
-		[]byte(`{"event": "click", "button": "buy"}`),
+	// 5. Define messages
+	messages := []pulsix.Message{
+		{Data: []byte(`{"event": "login", "user": "alice"}`)},
+		{Data: []byte(`{"event": "click", "button": "buy"}`)},
 	}
 
 	for i, msg := range messages {
-		fmt.Printf("📨 Message %d: %s\n", i+1, string(msg))
+		fmt.Printf("📨 Message %d: %s\n", i+1, string(msg.Data))
 	}
 
 	fmt.Printf("🚀 Pulsix Producer starting (Bucket: %s)...\n", bucketName)

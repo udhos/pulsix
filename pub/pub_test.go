@@ -6,20 +6,22 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/udhos/pulsix/pulsix"
 )
 
 type mockStorage struct {
 	capturedContent string
 }
 
-func (m *mockStorage) PutObject(ctx context.Context, key string, r io.Reader, size int64) error {
+func (m *mockStorage) PutObject(_ context.Context, _ string, r io.Reader, _ int64) error {
 	buf := new(strings.Builder)
 	io.Copy(buf, r)
 	m.capturedContent = buf.String()
 	return nil
 }
 
-func (m *mockStorage) GetObject(ctx context.Context, key string) (io.ReadCloser, error) {
+func (m *mockStorage) GetObject(_ context.Context, _ string) (io.ReadCloser, error) {
 	return nil, nil
 }
 
@@ -27,7 +29,10 @@ func TestSendBatch(t *testing.T) {
 	storage := &mockStorage{}
 	p := New(Options{Storage: storage, Prefix: "test"})
 
-	msgs := [][]byte{[]byte("hello"), []byte("pulsix")}
+	msgs := []pulsix.Message{
+		{Data: []byte("hello")},
+		{Data: []byte("pulsix")},
+	}
 
 	// Expected:
 	// p1:9:d:5:hello (4+1+1+1+2 + 5 = 9 internal, total string is 11)
@@ -48,7 +53,7 @@ func TestSendBatchEmpty(t *testing.T) {
 	storage := &mockStorage{}
 	p := New(Options{Storage: storage})
 
-	err := p.SendBatch(context.Background(), [][]byte{})
+	err := p.SendBatch(context.Background(), []pulsix.Message{})
 	if !errors.Is(err, ErrEmptyMessages) {
 		t.Errorf("expected ErrEmptyMessages, got %v", err)
 	}

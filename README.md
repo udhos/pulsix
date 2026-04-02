@@ -56,6 +56,8 @@ Consumers listen for SQS notifications and fetch the corresponding batch of mess
 p1:<total_record_length>:<tlv1><tlv2>...<tlvn>
 ```
 
+p1 record holds a single message.
+
 `<total_record_length>` is the total length in ascii decimal, like "1234".
 
 `<total_record_length>` is always surrounded by `:`.
@@ -66,6 +68,8 @@ That is to say the total_record_length is the byte-length of the list of TLVs, e
 
 tlv is defined as:
 
+Each TLV field holds a piece of the message.
+
 ```bash
 <type>:<length>:<value>
 ```
@@ -73,7 +77,7 @@ tlv is defined as:
 `<type>` is 1 byte. We define 3 types that are ascii friendly for now:
 
 - Type 'm' means internal metadata.
-- Type 'a' means user attributes.
+- Type 'a' means user defined attributes.
 - Type 'd' means the actual user message data.
 
 Length is the length of the value in ascii decimal, like "1234".
@@ -94,10 +98,10 @@ Similar to total_record_length, the length field accounts exactly the byte-lengt
 **Final Wire Record:**
 `p1:22:a:9:{"a":"b"}d:5:hello`
 
-**Multiple Messages per Record:**
-If a producer batches two identical messages into one record, the length doubles and TLVs repeat:
-`p1:44:a:9:{"a":"b"}d:5:helloa:9:{"a":"b"}d:5:hello`
-
+**Multiple Messages:**
+A record transports a single message.
+If a producer batches two identical messages:
+`p1:22:a:9:{"a":"b"}d:5:hellop1:22:a:9:{"a":"b"}d:5:hello`
 
 # How to setup cross-account access
 

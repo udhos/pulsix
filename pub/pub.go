@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
 	"time"
 
 	"github.com/segmentio/ksuid"
@@ -63,7 +62,7 @@ var ErrEmptyMessages = errors.New("no messages to send")
 // SendBatch persists a slice of messages to S3 as a single Pulsix batch.
 // It returns only after S3 confirms the write (Synchronous Persistence).
 // SendBatch encodes messages into the p1 format and sends them to storage.
-func (p *Pub) SendBatch(ctx context.Context, messages [][]byte) error {
+func (p *Pub) SendBatch(ctx context.Context, messages []pulsix.Message) error {
 	if len(messages) == 0 {
 		return ErrEmptyMessages
 	}
@@ -71,27 +70,15 @@ func (p *Pub) SendBatch(ctx context.Context, messages [][]byte) error {
 	pr, pw := io.Pipe()
 
 	go func() {
-		defer pw.Close()
-		for _, msg := range messages {
-			// 1. Prepare the Data TLV: "d:<len>:<data>"
-			dataLenStr := strconv.Itoa(len(msg))
-			tlvBody := fmt.Sprintf("d:%s:", dataLenStr)
+		var err error
+		defer func() {
+			// Only close with an error if one actually occurred
+			pw.CloseWithError(err)
+		}()
 
-			// Total length of the record body (the TLV part)
-			totalRecordLen := len(tlvBody) + len(msg)
-
-			// 2. Write the p1 Header: "p1:<total_len>:"
-			header := fmt.Sprintf("%s:%d:", VersionP1, totalRecordLen)
-
-			if _, err := pw.Write([]byte(header)); err != nil {
-				return
-			}
-
-			// 3. Write the TLV Body
-			if _, err := pw.Write([]byte(tlvBody)); err != nil {
-				return
-			}
-			if _, err := pw.Write(msg); err != nil {
+		for i := range messages {
+			// EncodeTLV now handles the p1:len: and all internal TLVs
+			if err = messages[i].EncodeTLV(pw); err != nil {
 				return
 			}
 		}
@@ -99,5 +86,7 @@ func (p *Pub) SendBatch(ctx context.Context, messages [][]byte) error {
 
 	key := generatePulsixKey(p.options.Prefix)
 
+	// PutObject handles the stream. Notification happens outside this func
+	// or via S3 bucket notification config.
 	return p.options.Storage.PutObject(ctx, key, pr, -1)
 }
