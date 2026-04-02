@@ -63,7 +63,7 @@ func TestSub_ReceiveAndLifecycle(t *testing.T) {
 		t.Fatalf("Next() failed: %v", batch.Error())
 	}
 
-	if string(batch.Message()) != "hello" {
+	if string(batch.Message().Data) != "hello" {
 		t.Errorf("expected hello, got %s", batch.Message())
 	}
 
@@ -89,11 +89,11 @@ func TestSub_FullStream(t *testing.T) {
 	batches, _ := subscriber.Receive(context.Background())
 	batch := batches[0]
 
-	if !batch.Next() || string(batch.Message()) != "hello" {
+	if !batch.Next() || string(batch.Message().Data) != "hello" {
 		t.Errorf("failed to read first message")
 	}
 
-	if !batch.Next() || string(batch.Message()) != "world" {
+	if !batch.Next() || string(batch.Message().Data) != "world" {
 		t.Errorf("failed to read second message")
 	}
 

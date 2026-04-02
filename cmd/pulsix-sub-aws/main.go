@@ -54,7 +54,11 @@ func main() {
 			fmt.Printf("\n📦 Batch: %s\n", b.GetKey())
 
 			for b.Next() {
-				fmt.Printf("  📩 Msg: %s\n", string(b.Message()))
+				msg := b.Message()
+				fmt.Printf("  📩 Msg: %s\n", string(msg.Data))
+				if len(msg.Attributes) > 0 {
+					fmt.Printf("     Attrs: %v\n", msg.Attributes)
+				}
 			}
 
 			if err := b.Done(); err != nil {

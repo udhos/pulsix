@@ -45,12 +45,13 @@ func main() {
 			fmt.Printf("\n📦 Processing Batch: %s\n", b.GetKey())
 
 			// 3. Stream through the messages
-			count := 0
 			for b.Next() {
-				count++
-				fmt.Printf("  📩 Message %d: %s\n", count, string(b.Message()))
+				msg := b.Message()
+				fmt.Printf("  📩 Msg: %s\n", string(msg.Data))
+				if len(msg.Attributes) > 0 {
+					fmt.Printf("     Attrs: %v\n", msg.Attributes)
+				}
 			}
-
 			if err := b.Error(); err != nil {
 				log.Printf("  ❌ Stream error: %v", err)
 			}

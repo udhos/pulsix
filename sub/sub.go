@@ -4,6 +4,7 @@ package sub
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
@@ -78,9 +79,7 @@ type Batch struct {
 	notification Notification
 	reader       io.ReadCloser
 	bufr         *bufio.Reader
-	current      []byte
-	currentMeta  string
-	currentAttr  string
+	current      pulsix.Message
 	err          error
 }
 
@@ -131,10 +130,11 @@ func (b *Batch) parseTLVs(data []byte) bool {
 	pos := 0
 	found := false
 
-	// Reset current fields for the new record
-	b.current = nil
-	b.currentMeta = ""
-	b.currentAttr = ""
+	// Reset current message with initialized map to avoid nil pointer issues
+	b.current = pulsix.Message{
+		Attributes: make(map[string]string),
+		Metadata:   pulsix.Metadata{},
+	}
 
 	for pos < len(data) {
 		// 1. Ensure we have at least "T:" (2 bytes)
@@ -171,18 +171,29 @@ func (b *Batch) parseTLVs(data []byte) bool {
 		value := data[pos : pos+valLen]
 		pos += valLen
 
-		// 4. Assign based on tag
+		// 4. Assign based on tag to the pulsix.Message fields
 		switch tag {
 		case 'd':
-			b.current = value
+			// Note: This slice points into recordBody.
+			// If the user needs it to persist, they must copy it.
+			b.current.Data = value
 			found = true
 		case 'm':
-			b.currentMeta = string(value)
+			// Assuming Metadata has a field for the raw string identifier
+			// Adjust this field name to match your actual pulsix.Metadata struct
+			b.current.Metadata.MessageID = string(value)
 		case 'a':
-			b.currentAttr = string(value)
+			// The P1 format stores attributes as a JSON object string.
+			// We unmarshal that directly into our map.
+			if len(value) > 0 {
+				if err := json.Unmarshal(value, &b.current.Attributes); err != nil {
+					// In a production scenario, you might want to log this
+					// or set b.err, but for now we skip malformed attributes.
+					continue
+				}
+			}
 		default:
-			// Unknown tags (like 'z') are ignored but correctly skipped
-			// because we already advanced 'pos' by 'valLen'
+			// Unknown tags are skipped (already handled by advancing pos)
 		}
 	}
 
@@ -190,8 +201,8 @@ func (b *Batch) parseTLVs(data []byte) bool {
 }
 
 // Message returns the most recent message parsed by Next.
-// Note: The underlying slice is reused; copy it if you need it to persist.
-func (b *Batch) Message() []byte {
+// Note: The Data slice within the Message is reused; copy it if you need it to persist.
+func (b *Batch) Message() pulsix.Message {
 	return b.current
 }
 

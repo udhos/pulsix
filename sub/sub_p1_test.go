@@ -7,22 +7,25 @@ import (
 )
 
 // go test -v -count 1 -run '^TestNext_P1Format$' ./sub
+// go test -v -count 1 -run '^TestNext_P1Format$' ./sub
 func TestNext_P1Format(t *testing.T) {
 	tests := []struct {
 		name        string
 		input       string
 		wantMeta    string
-		wantAttr    string
+		wantAttrKey string // Changed to verify map keys
+		wantAttrVal string
 		wantData    string
 		wantErr     bool
 		errContains string
 	}{
 		{
-			name:     "Valid packed p1 record",
-			input:    "p1:29:m:3:001a:9:{\"a\":\"b\"}d:5:hello",
-			wantMeta: "001",
-			wantAttr: `{"a":"b"}`,
-			wantData: "hello",
+			name:        "Valid packed p1 record",
+			input:       "p1:29:m:3:001a:9:{\"a\":\"b\"}d:5:hello",
+			wantMeta:    "001",
+			wantAttrKey: "a",
+			wantAttrVal: "b",
+			wantData:    "hello",
 		},
 		{
 			name:     "Empty data field",
@@ -77,19 +80,27 @@ func TestNext_P1Format(t *testing.T) {
 				t.Fatalf("Next() failed unexpectedly: %v", b.err)
 			}
 
-			// Verify Data (Tag 'd')
-			if string(b.Message()) != tt.wantData {
-				t.Errorf("got data %q, want %q", b.Message(), tt.wantData)
+			msg := b.Message()
+
+			// 1. Verify Data (Tag 'd')
+			if string(msg.Data) != tt.wantData {
+				t.Errorf("got data %q, want %q", string(msg.Data), tt.wantData)
 			}
 
-			// Verify Meta (Tag 'm')
-			if b.currentMeta != tt.wantMeta {
-				t.Errorf("got meta %q, want %q", b.currentMeta, tt.wantMeta)
+			// 2. Verify Meta (Tag 'm') - mapped to MessageID
+			if msg.Metadata.MessageID != tt.wantMeta {
+				t.Errorf("got meta %q, want %q", msg.Metadata.MessageID, tt.wantMeta)
 			}
 
-			// Verify Attr (Tag 'a')
-			if b.currentAttr != tt.wantAttr {
-				t.Errorf("got attr %q, want %q", b.currentAttr, tt.wantAttr)
+			// 3. Verify Attr (Tag 'a') - mapped to Attributes map
+			if tt.wantAttrKey != "" {
+				val, exists := msg.Attributes[tt.wantAttrKey]
+				if !exists {
+					t.Errorf("expected attribute key %q not found", tt.wantAttrKey)
+				}
+				if val != tt.wantAttrVal {
+					t.Errorf("got attr[%q] = %q, want %q", tt.wantAttrKey, val, tt.wantAttrVal)
+				}
 			}
 		})
 	}
@@ -105,12 +116,12 @@ func TestStream_MultipleP1Records(t *testing.T) {
 	}
 
 	// First Record
-	if !b.Next() || len(b.Message()) != 0 {
+	if !b.Next() || len(b.Message().Data) != 0 {
 		t.Errorf("failed to parse first empty record: %v", b.err)
 	}
 
 	// Second Record
-	if !b.Next() || string(b.Message()) != "world" {
+	if !b.Next() || string(b.Message().Data) != "world" {
 		t.Errorf("failed to parse second record: %v", b.err)
 	}
 
@@ -135,7 +146,7 @@ func TestP1_RecordJumping(t *testing.T) {
 	b.Next()
 
 	// The second call should find the start of the next valid p1
-	if !b.Next() || string(b.Message()) != "valid" {
+	if !b.Next() || string(b.Message().Data) != "valid" {
 		t.Errorf("failed to jump to next record correctly: %v", b.err)
 	}
 }
