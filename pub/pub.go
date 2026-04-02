@@ -62,7 +62,7 @@ func (p *Pub) SendBatch(ctx context.Context, messages [][]byte) error {
 	var totalSize int64
 
 	for _, m := range messages {
-		header := fmt.Appendf(nil, "%s%d\n", pulsix.HeaderPrefix, len(m))
+		header := fmt.Appendf(nil, "\n%s%d\n", pulsix.HeaderPrefix, len(m))
 		readers = append(readers, bytes.NewReader(header))
 		readers = append(readers, bytes.NewReader(m))
 		totalSize += int64(len(header) + len(m))

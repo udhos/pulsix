@@ -82,46 +82,70 @@ type Batch struct {
 	err          error
 }
 
+// parseHeader is the concrete logic for extracting the payload size from the stream.
+// parseHeader extracts the payload size from a stream formatted as \nPULSIX-SIZE:N\n
+func parseHeader(r *bufio.Reader) (int, error) {
+	var line string
+	var err error
+
+	// 1. Skip leading empty lines
+	for {
+		line, err = r.ReadString('\n')
+		if err != nil {
+			return 0, err // Returns io.EOF correctly
+		}
+		if strings.TrimSpace(line) != "" {
+			break
+		}
+	}
+
+	// 2. Validate Prefix
+	if !strings.HasPrefix(line, pulsix.HeaderPrefix) {
+		return 0, fmt.Errorf("invalid header format: %q", line)
+	}
+
+	// 3. Extract and Parse Size
+	sizeStr := strings.TrimSpace(line[len(pulsix.HeaderPrefix):])
+	size, err := strconv.Atoi(sizeStr)
+	if err != nil {
+		// Wrap the error so the test can find "invalid size"
+		return 0, fmt.Errorf("invalid size %q: %w", sizeStr, err)
+	}
+
+	// 4. Logic Check: Sizes cannot be negative
+	if size < 0 {
+		return 0, fmt.Errorf("invalid size: %d cannot be negative", size)
+	}
+
+	return size, nil
+}
+
 // Next advances the batch to the next message.
 func (b *Batch) Next() bool {
 	if b.err != nil {
 		return false
 	}
 
-	// 1. Read the header line (e.g., "PULSIX-SIZE:123\n")
-	line, err := b.bufr.ReadString('\n')
+	// Use our concrete parser
+	size, err := parseHeader(b.bufr)
 	if err != nil {
 		if err != io.EOF {
-			b.err = fmt.Errorf("failed to read pulsix header: %w", err)
+			b.err = fmt.Errorf("header parse error: %w", err)
 		}
 		return false
 	}
 
-	// 2. Parse the size from the header
-	if !strings.HasPrefix(line, pulsix.HeaderPrefix) {
-		b.err = fmt.Errorf("invalid pulsix header format: %s", line)
-		return false
-	}
-
-	// Trim prefix and the trailing newline
-	sizeStr := strings.TrimSpace(line[len(pulsix.HeaderPrefix):])
-	size, err := strconv.Atoi(sizeStr)
-	if err != nil {
-		b.err = fmt.Errorf("invalid pulsix size: %w", err)
-		return false
-	}
-
-	// 3. Read exactly N bytes into the current buffer
-	// We reuse b.current to minimize allocations
+	// Manage the buffer
 	if cap(b.current) < size {
 		b.current = make([]byte, size)
 	} else {
 		b.current = b.current[:size]
 	}
 
+	// Read the actual data
 	_, err = io.ReadFull(b.bufr, b.current)
 	if err != nil {
-		b.err = fmt.Errorf("failed to read pulsix payload: %w", err)
+		b.err = fmt.Errorf("payload read error: %w", err)
 		return false
 	}
 

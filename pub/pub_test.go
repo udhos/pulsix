@@ -31,7 +31,6 @@ func (m *MockStorage) GetObject(_ context.Context, _ string) (io.ReadCloser, err
 }
 
 func TestSendBatch(t *testing.T) {
-	// 1. Setup
 	mock := &MockStorage{}
 	publisher := New(Options{
 		Storage: mock,
@@ -43,26 +42,21 @@ func TestSendBatch(t *testing.T) {
 		[]byte("pulsix"),
 	}
 
-	// 2. Execute
 	err := publisher.SendBatch(context.Background(), messages)
-
-	// 3. Assert
 	if err != nil {
 		t.Fatalf("SendBatch failed: %v", err)
 	}
 
-	// Verify prefix in key
 	if !strings.HasPrefix(mock.CapturedKey, "test-events/") {
 		t.Errorf("expected key prefix 'test-events/', got %s", mock.CapturedKey)
 	}
 
-	// Verify the format: PULSIX-SIZE:N\nDATA
-	expectedContent := "PULSIX-SIZE:5\nhelloPULSIX-SIZE:6\npulsix"
+	expectedContent := "\nPULSIX-SIZE:5\nhello\nPULSIX-SIZE:6\npulsix"
 	if string(mock.CapturedContent) != expectedContent {
 		t.Errorf("expected content %q, got %q", expectedContent, string(mock.CapturedContent))
 	}
 
-	// Verify total size calculation
+	// Verify total size calculation (41 bytes)
 	if mock.CapturedSize != int64(len(expectedContent)) {
 		t.Errorf("expected reported size %d, got %d", len(expectedContent), mock.CapturedSize)
 	}

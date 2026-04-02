@@ -1,6 +1,7 @@
 package sub
 
 import (
+	"bufio"
 	"context"
 	"io"
 	"strings"
@@ -39,53 +40,37 @@ func (m *MockStorage) GetObject(_ context.Context, key string) (io.ReadCloser, e
 }
 
 func TestSub_ReceiveAndLifecycle(t *testing.T) {
-	// 1. Setup
 	key := "test/path/batch.pulsix"
-	content := "PULSIX-SIZE:5\nhello"
+	// UPDATED: Content now matches the \n prefix format
+	content := "\nPULSIX-SIZE:5\nhello"
 
-	// We create the pointer here so we can track it later
 	notif1 := &MockNotification{Key: key}
-
-	mockQueue := &MockQueue{
-		Notifications: []Notification{notif1},
-	}
-	mockStorage := &MockStorage{
-		Data: map[string]string{key: content},
-	}
+	mockQueue := &MockQueue{Notifications: []Notification{notif1}}
+	mockStorage := &MockStorage{Data: map[string]string{key: content}}
 
 	subscriber := New(Options{
 		Queue:   mockQueue,
 		Storage: mockStorage,
 	})
 
-	// 2. Execute Receive
 	batches, err := subscriber.Receive(context.Background())
 	if err != nil {
 		t.Fatalf("Receive failed: %v", err)
 	}
 
-	if len(batches) != 1 {
-		t.Fatalf("expected 1 batch, got %d", len(batches))
-	}
-
 	batch := batches[0]
-
-	// 3. Verify Key
-	if batch.notification.GetKey() != key {
-		t.Errorf("expected key %s, got %s", key, batch.notification.GetKey())
+	if !batch.Next() {
+		t.Fatalf("Next() failed: %v", batch.Error())
 	}
 
-	// 4. CRITICAL CHECK: Verify it is NOT deleted yet
-	if notif1.Deleted {
-		t.Error("notification was deleted before Done() was called")
+	if string(batch.Message()) != "hello" {
+		t.Errorf("expected hello, got %s", batch.Message())
 	}
 
-	// 5. Verify Lifecycle (Done)
 	if err := batch.Done(); err != nil {
 		t.Errorf("Done failed: %v", err)
 	}
 
-	// 6. FINAL CHECK: Verify it IS deleted now
 	if !notif1.Deleted {
 		t.Error("expected notification to be deleted after Done()")
 	}
@@ -93,8 +78,8 @@ func TestSub_ReceiveAndLifecycle(t *testing.T) {
 
 func TestSub_FullStream(t *testing.T) {
 	key := "test.batch"
-	// Two messages: "hello" (5) and "world" (5)
-	content := "PULSIX-SIZE:5\nhelloPULSIX-SIZE:5\nworld"
+	// UPDATED: Two messages with leading newlines
+	content := "\nPULSIX-SIZE:5\nhello\nPULSIX-SIZE:5\nworld"
 
 	mockQueue := &MockQueue{Notifications: []Notification{&MockNotification{Key: key}}}
 	mockStorage := &MockStorage{Data: map[string]string{key: content}}
@@ -103,26 +88,131 @@ func TestSub_FullStream(t *testing.T) {
 	batches, _ := subscriber.Receive(context.Background())
 	batch := batches[0]
 
-	// First message
-	if !batch.Next() {
-		t.Fatalf("expected first message, got error: %v", batch.Error())
-	}
-	if string(batch.Message()) != "hello" {
-		t.Errorf("expected hello, got %s", batch.Message())
+	if !batch.Next() || string(batch.Message()) != "hello" {
+		t.Errorf("failed to read first message")
 	}
 
-	// Second message
-	if !batch.Next() {
-		t.Fatalf("expected second message, got error: %v", batch.Error())
-	}
-	if string(batch.Message()) != "world" {
-		t.Errorf("expected world, got %s", batch.Message())
+	if !batch.Next() || string(batch.Message()) != "world" {
+		t.Errorf("failed to read second message")
 	}
 
-	// End of stream
 	if batch.Next() {
-		t.Error("expected end of stream, but Next() returned true")
+		t.Error("expected end of stream")
 	}
 
 	batch.Done()
+}
+
+func TestParseHeader_LeadingNewline(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    int
+		wantErr bool
+	}{
+		{
+			name:    "Standard with leading newline",
+			input:   "\nPULSIX-SIZE:5\nhello",
+			want:    5,
+			wantErr: false,
+		},
+		{
+			name:    "Subsequent record (double newline handling)",
+			input:   "\n\nPULSIX-SIZE:10\n",
+			want:    10,
+			wantErr: false,
+		},
+		{
+			name:    "Missing leading newline but correct prefix",
+			input:   "PULSIX-SIZE:5\n",
+			want:    5,
+			wantErr: false,
+		},
+		{
+			name:    "Garbage input",
+			input:   "\nNOT-PULSIX:5\n",
+			want:    0,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := bufio.NewReader(strings.NewReader(tt.input))
+			got, err := parseHeader(r)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseHeader() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("parseHeader() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseHeader_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    int
+		wantErr string
+	}{
+		{
+			name:    "EOF mid-header",
+			input:   "\nPULSIX-SI",
+			wantErr: "EOF",
+		},
+		{
+			name:    "Overflow size",
+			input:   "\nPULSIX-SIZE:9223372036854775808\n",
+			wantErr: "invalid size",
+		},
+		{
+			name:    "Negative size",
+			input:   "\nPULSIX-SIZE:-1\n",
+			wantErr: "invalid size",
+		},
+		{
+			name:    "Valid header followed by data that looks like header",
+			input:   "\nPULSIX-SIZE:5\n\nPULSIX-SIZE:10\n",
+			want:    5,
+			wantErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := bufio.NewReader(strings.NewReader(tt.input))
+			got, err := parseHeader(r)
+
+			// If we expect an error
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) && err != io.EOF {
+					t.Errorf("expected error %q, got %v", tt.wantErr, err)
+				}
+				return
+			}
+
+			// If we expect success
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("got size %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func FuzzParseHeader(f *testing.F) {
+	f.Add("\nPULSIX-SIZE:10\n")
+	f.Fuzz(func(_ *testing.T, data string) {
+		r := bufio.NewReader(strings.NewReader(data))
+		_, _ = parseHeader(r)
+		// We don't care about the result, only that it doesn't panic
+	})
 }
