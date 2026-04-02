@@ -41,8 +41,18 @@ Consumers listen for SQS notifications and fetch the corresponding batch of mess
 Pulsix uses a Streamable Length-Prefixed format. Each record is prefixed with its size, allowing consumers to stream and parse messages from S3 with zero-copy efficiency and no need to load the entire batch into memory.
 
 ```bash
-PULSIX-SIZE:<N1>\n<N1_PAYLOAD_BYTES>
-PULSIX-SIZE:<N2>\n<N2_PAYLOAD_BYTES>
+\nPULSIX-SIZE:<N1>\n<N1_PAYLOAD_BYTES>
+\nPULSIX-SIZE:<N2>\n<N2_PAYLOAD_BYTES>
+```
+
+Example:
+
+```bash
+
+PULSIX-SIZE:35
+{"event": "login", "user": "alice"}
+PULSIX-SIZE:35
+{"event": "click", "button": "buy"}
 ```
 
 # How to setup cross-account access
