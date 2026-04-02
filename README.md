@@ -18,7 +18,7 @@ We only support Golang for now.
 
 - **Near Real-Time**: Configurable "Pulse" window (e.g., 1 second) provides a sweet balance of latency and batch efficiency.
 
-- **Truly Serverless**: No brokers to manage, no shards to re-balance.
+- **Based on Serverless**: Leverage serverless nature of S3 and SQS. No brokers to manage. No shards to re-balance.
 
 # How it works
 
