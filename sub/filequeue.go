@@ -17,7 +17,7 @@ type FileNotification struct {
 func (f *FileNotification) GetKey() string { return f.Key }
 
 // Delete removes the notification from the queue after processing.
-func (f *FileNotification) Delete() error { return os.Remove(f.FilePath) }
+func (f *FileNotification) Delete(_ context.Context) error { return os.Remove(f.FilePath) }
 
 // FileQueue implements Queue
 type FileQueue struct {

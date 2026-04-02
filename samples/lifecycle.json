@@ -1,0 +1,17 @@
+{
+  "Rules": [
+    {
+      "ID": "PulsixShortTermStorage",
+      "Filter": {
+        "Prefix": "events/"
+      },
+      "Status": "Enabled",
+      "Expiration": {
+        "Days": 7
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 1
+      }
+    }
+  ]
+}

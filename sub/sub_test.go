@@ -12,8 +12,8 @@ type MockNotification struct {
 	Deleted bool
 }
 
-func (m *MockNotification) GetKey() string { return m.Key }
-func (m *MockNotification) Delete() error  { m.Deleted = true; return nil }
+func (m *MockNotification) GetKey() string                 { return m.Key }
+func (m *MockNotification) Delete(_ context.Context) error { m.Deleted = true; return nil }
 
 type MockQueue struct {
 	Notifications []Notification

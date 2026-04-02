@@ -23,7 +23,7 @@ type Notification interface {
 	GetKey() string
 
 	// Delete removes the notification from the queue after processing.
-	Delete() error
+	Delete(ctx context.Context) error
 }
 
 // Queue abstracts the queue-specific calls for receiving notifications.
@@ -141,14 +141,18 @@ func (b *Batch) Error() error {
 
 // Done should be called after processing the batch to clean up resources and delete the notification.
 func (b *Batch) Done() error {
-	var err error
+	var closeErr error
 	if b.reader != nil {
-		err = b.reader.Close()
+		closeErr = b.reader.Close()
 	}
-	if delErr := b.notification.Delete(); delErr != nil {
-		return delErr
+
+	// Use the context from the batch if possible, or pass it in
+	delErr := b.notification.Delete(context.Background())
+
+	if delErr != nil {
+		return fmt.Errorf("sqs delete failed: %w", delErr)
 	}
-	return err
+	return closeErr
 }
 
 // GetKey returns the underlying S3 key for this batch.

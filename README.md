@@ -24,9 +24,13 @@ We only support Golang for now.
 
 ## Producer
 
-Producers inject the messages with a pulse window. When the publish API returns without error, the message is reliably accepted for delivery.
+Producers group messages into batches. When the SendBatch API returns without error, the data is guaranteed to be durable in S3 and visible to consumers via SQS.
 
-Internally, the publish API writes messages in batches to S3, triggering a SQS notification for each batch. The SQS message contains the S3 object key, which serves as the pointer to the batch of messages.
+The SendBatch API writes messages in batches to S3, triggering a SQS notification for each batch. The SQS message contains the S3 object key, which serves as the pointer to the batch of messages.
+
+Pulsix uses a Zero-Copy Streaming approach. It leverages a MultiReader to pipe message slices directly from the application to AWS.
+
+Internally, Pulsix utilizes the AWS S3 Transfer Manager to handle multi-part uploads and automatic retries, ensuring that even gigabyte-scale batches are handled with a constant, minimal memory footprint.
 
 ## Consumer
 
@@ -95,3 +99,57 @@ Bucket Policy:
 ## Step 3: Enable S3 Event Notifications
 
 Once the policies are in place, you configure the S3 bucket in **Account A** to send a notification to the SQS ARN in **Account B** whenever a `.batch` file is created.
+
+# Bucket Lifecycle
+
+Do not forget to set a lifecycle policy on the S3 bucket to clean up old batches.
+
+Pulsix does not automatically delete the batch files from S3, so this is crucial to prevent storage bloat.
+
+Example lifecycle policy:
+
+```json
+{
+  "Rules": [
+    {
+      "ID": "PulsixShortTermStorage",
+      "Filter": {
+        "Prefix": "events/"
+      },
+      "Status": "Enabled",
+      "Expiration": {
+        "Days": 7
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 1
+      }
+    }
+  ]
+}
+```
+
+Save the above JSON to a file named `lifecycle.json` and apply it to your bucket with the AWS CLI:
+
+```bash
+aws s3api put-bucket-lifecycle-configuration \
+    --bucket your-pulsix-bucket-name \
+    --lifecycle-configuration file://lifecycle.json
+```
+
+# Running the example clients
+
+```bash
+# publisher
+BUCKET=bucket-name pulsix-pub-aws
+
+# consumer
+BUCKET=bucket-name QUEUE_URL=https://sqs.us-east-1.amazonaws.com/123412341234/queue-name pulsix-sub-aws
+```
+
+# TODO
+
+- [ ] Benchmark tests.
+- [ ] Large scale testing on AWS.
+- [ ] Metrics.
+- [ ] Replace DeleteMessage with DeleteMessageBatch for better efficiency.
+- [ ] Review logs.
