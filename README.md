@@ -48,7 +48,7 @@ Consumers listen for SQS notifications and fetch the corresponding batch of mess
 <2-bytes version><record>
 ```
 
-4 - The first version we define is `p1` (pulsix version 1). So the first two bytes of every record are `0x70 0x31` (ASCII "p1").
+4 - The first version is `p1` (pulsix version 1). So the first two bytes of every record are `0x70 0x31` (ASCII "p1").
 
 5 - p1 record is defined as:
 
@@ -70,11 +70,11 @@ tlv is defined as:
 <type>:<length>:<value>
 ```
 
-`<type>` is 1 byte. we define 3 types that are ascii friendly for now:
+`<type>` is 1 byte. We define 3 types that are ascii friendly for now:
 
-Type 'm' means internal metadata.
-Type 'a' means user attributes.
-Type 'd' means the actual user message data.
+- Type 'm' means internal metadata.
+- Type 'a' means user attributes.
+- Type 'd' means the actual user message data.
 
 Length is the length of the value in ascii decimal, like "1234".
 Length is always surrounded by `:`.
