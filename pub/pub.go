@@ -2,15 +2,29 @@
 package pub
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"time"
 
 	"github.com/segmentio/ksuid"
 	"github.com/udhos/pulsix/pulsix"
+)
+
+const (
+	// VersionP1 is version 1.
+	VersionP1 = "p1"
+
+	// TagData is TLV type for user data.
+	TagData = 'd'
+
+	// TagMeta is TLV type for internal metadata.
+	TagMeta = 'm'
+
+	// TagAttr is TLV type for user attributes.
+	TagAttr = 'a'
 )
 
 // Pub is the main struct for the pulsix publisher. It provides methods to send messages to S3.
@@ -48,28 +62,42 @@ var ErrEmptyMessages = errors.New("no messages to send")
 
 // SendBatch persists a slice of messages to S3 as a single Pulsix batch.
 // It returns only after S3 confirms the write (Synchronous Persistence).
+// SendBatch encodes messages into the p1 format and sends them to storage.
 func (p *Pub) SendBatch(ctx context.Context, messages [][]byte) error {
 	if len(messages) == 0 {
-		return ErrEmptyMessages // empty batch is not allowed
+		return ErrEmptyMessages
 	}
 
-	// 1. Generate a unique key (e.g., UUID or Timestamp)
+	pr, pw := io.Pipe()
+
+	go func() {
+		defer pw.Close()
+		for _, msg := range messages {
+			// 1. Prepare the Data TLV: "d:<len>:<data>"
+			dataLenStr := strconv.Itoa(len(msg))
+			tlvBody := fmt.Sprintf("d:%s:", dataLenStr)
+
+			// Total length of the record body (the TLV part)
+			totalRecordLen := len(tlvBody) + len(msg)
+
+			// 2. Write the p1 Header: "p1:<total_len>:"
+			header := fmt.Sprintf("%s:%d:", VersionP1, totalRecordLen)
+
+			if _, err := pw.Write([]byte(header)); err != nil {
+				return
+			}
+
+			// 3. Write the TLV Body
+			if _, err := pw.Write([]byte(tlvBody)); err != nil {
+				return
+			}
+			if _, err := pw.Write(msg); err != nil {
+				return
+			}
+		}
+	}()
+
 	key := generatePulsixKey(p.options.Prefix)
 
-	// 2. Wrap the messages in a MultiReader (Zero-copy)
-	// We create a slice of readers: [Header, Msg, Header, Msg...]
-	readers := make([]io.Reader, 0, len(messages)*2)
-	var totalSize int64
-
-	for _, m := range messages {
-		header := fmt.Appendf(nil, "\n%s%d\n", pulsix.HeaderPrefix, len(m))
-		readers = append(readers, bytes.NewReader(header))
-		readers = append(readers, bytes.NewReader(m))
-		totalSize += int64(len(header) + len(m))
-	}
-
-	fullStream := io.MultiReader(readers...)
-
-	// 3. Hand off to the Storage layer
-	return p.options.Storage.PutObject(ctx, key, fullStream, totalSize)
+	return p.options.Storage.PutObject(ctx, key, pr, -1)
 }

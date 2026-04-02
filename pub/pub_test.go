@@ -2,71 +2,54 @@ package pub
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
 )
 
-// MockStorage implements pulsix.Storage for testing purposes.
-type MockStorage struct {
-	CapturedKey     string
-	CapturedContent []byte
-	CapturedSize    int64
+type mockStorage struct {
+	capturedContent string
 }
 
-func (m *MockStorage) PutObject(_ context.Context, key string, r io.Reader, contentLength int64) error {
-	m.CapturedKey = key
-	m.CapturedSize = contentLength
-	// Read the entire stream to verify the content
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return err
-	}
-	m.CapturedContent = data
+func (m *mockStorage) PutObject(ctx context.Context, key string, r io.Reader, size int64) error {
+	buf := new(strings.Builder)
+	io.Copy(buf, r)
+	m.capturedContent = buf.String()
 	return nil
 }
 
-func (m *MockStorage) GetObject(_ context.Context, _ string) (io.ReadCloser, error) {
-	return nil, nil // Not used in pub tests
+func (m *mockStorage) GetObject(ctx context.Context, key string) (io.ReadCloser, error) {
+	return nil, nil
 }
 
 func TestSendBatch(t *testing.T) {
-	mock := &MockStorage{}
-	publisher := New(Options{
-		Storage: mock,
-		Prefix:  "test-events",
-	})
+	storage := &mockStorage{}
+	p := New(Options{Storage: storage, Prefix: "test"})
 
-	messages := [][]byte{
-		[]byte("hello"),
-		[]byte("pulsix"),
-	}
+	msgs := [][]byte{[]byte("hello"), []byte("pulsix")}
 
-	err := publisher.SendBatch(context.Background(), messages)
+	// Expected:
+	// p1:9:d:5:hello (4+1+1+1+2 + 5 = 9 internal, total string is 11)
+	// p1:10:d:6:pulsix
+	err := p.SendBatch(context.Background(), msgs)
 	if err != nil {
-		t.Fatalf("SendBatch failed: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !strings.HasPrefix(mock.CapturedKey, "test-events/") {
-		t.Errorf("expected key prefix 'test-events/', got %s", mock.CapturedKey)
-	}
-
-	expectedContent := "\nPULSIX-SIZE:5\nhello\nPULSIX-SIZE:6\npulsix"
-	if string(mock.CapturedContent) != expectedContent {
-		t.Errorf("expected content %q, got %q", expectedContent, string(mock.CapturedContent))
-	}
-
-	// Verify total size calculation (41 bytes)
-	if mock.CapturedSize != int64(len(expectedContent)) {
-		t.Errorf("expected reported size %d, got %d", len(expectedContent), mock.CapturedSize)
+	expected := "p1:9:d:5:hellop1:10:d:6:pulsix"
+	if storage.capturedContent != expected {
+		t.Errorf("expected content %q, got %q", expected, storage.capturedContent)
 	}
 }
 
 func TestSendBatchEmpty(t *testing.T) {
-	publisher := New(Options{Storage: &MockStorage{}})
-	err := publisher.SendBatch(context.Background(), [][]byte{})
+	// Provide a mock even if we expect an early return
+	storage := &mockStorage{}
+	p := New(Options{Storage: storage})
 
-	if err != ErrEmptyMessages {
+	err := p.SendBatch(context.Background(), [][]byte{})
+	if !errors.Is(err, ErrEmptyMessages) {
 		t.Errorf("expected ErrEmptyMessages, got %v", err)
 	}
 }

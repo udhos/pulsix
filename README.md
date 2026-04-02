@@ -38,21 +38,59 @@ Consumers listen for SQS notifications and fetch the corresponding batch of mess
 
 ## Storage Format
 
-Pulsix uses a Streamable Length-Prefixed format. Each record is prefixed with its size, allowing consumers to stream and parse messages from S3 with zero-copy efficiency and no need to load the entire batch into memory.
+1 - One file stores one batch of messages.
 
-```bash
-\nPULSIX-SIZE:<N1>\n<N1_PAYLOAD_BYTES>
-\nPULSIX-SIZE:<N2>\n<N2_PAYLOAD_BYTES>
-```
+2 - A file is a sequence of records.
+
+3 - Every record has this format:
+
+<2-bytes version><record>
+
+4 - The first version we define is `p1` (pulsix version 1). So the first two bytes of every record are `0x70 0x31` (ASCII "p1").
+
+5 - p1 record is defined as:
+
+p1:<total_record_length>:<tlv1><tlv2>...<tlvn>
+
+<total_record_length> is the total length in ascii decimal, like "1234".
+
+<total_record_length> is always surrounded by `:`.
+
+The total_record_length accounts exactly the full number of bytes AFTER the ':' that follows the total_record_length, and up to-and-including the last TLV byte of the record.
+
+That is to say the total_record_length is the byte-length of the list of TLVs, but excluding the 2 bytes of version and the total_record_length field itself.
+
+If the parser wants to skip a record, it can simply read the version and total_record_length, and then skip total_record_length bytes to jump to the next record.
+
+tlv is defined as:
+
+<type>:<length>:<value>
+
+type is 1 byte, but we start ascii friendly, so we define 3 types for now:
+
+Ascii 'm' means internal metadata.
+Ascii 'a' means user attributes.
+Ascii 'd' means the actual message data.
+
+Length is the length of the value in ascii decimal, like "1234".
+Length is always surrounded by `:`.
+Similar to total_record_length, the length field accounts exactly the byte-length of the value field.
+
+If the parser wants to skip a tlv, it can simply read the type and length, and then skip length bytes to jump to the next tlv.
 
 Example:
 
 ```bash
+user attributes: {"a":"b"}
+user data:       hello
 
-PULSIX-SIZE:35
-{"event": "login", "user": "alice"}
-PULSIX-SIZE:35
-{"event": "click", "button": "buy"}
+header: p1:22:
+tlv1:   a:9:{"a":"b"}
+tlv2:   d:5:hello
+
+record:
+
+p1:22:a:9:{"a":"b"}d:5:hello
 ```
 
 # How to setup cross-account access

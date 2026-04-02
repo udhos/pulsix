@@ -79,45 +79,9 @@ type Batch struct {
 	reader       io.ReadCloser
 	bufr         *bufio.Reader
 	current      []byte
+	currentMeta  string
+	currentAttr  string
 	err          error
-}
-
-// parseHeader is the concrete logic for extracting the payload size from the stream.
-// parseHeader extracts the payload size from a stream formatted as \nPULSIX-SIZE:N\n
-func parseHeader(r *bufio.Reader) (int, error) {
-	var line string
-	var err error
-
-	// 1. Skip leading empty lines
-	for {
-		line, err = r.ReadString('\n')
-		if err != nil {
-			return 0, err // Returns io.EOF correctly
-		}
-		if strings.TrimSpace(line) != "" {
-			break
-		}
-	}
-
-	// 2. Validate Prefix
-	if !strings.HasPrefix(line, pulsix.HeaderPrefix) {
-		return 0, fmt.Errorf("invalid header format: %q", line)
-	}
-
-	// 3. Extract and Parse Size
-	sizeStr := strings.TrimSpace(line[len(pulsix.HeaderPrefix):])
-	size, err := strconv.Atoi(sizeStr)
-	if err != nil {
-		// Wrap the error so the test can find "invalid size"
-		return 0, fmt.Errorf("invalid size %q: %w", sizeStr, err)
-	}
-
-	// 4. Logic Check: Sizes cannot be negative
-	if size < 0 {
-		return 0, fmt.Errorf("invalid size: %d cannot be negative", size)
-	}
-
-	return size, nil
 }
 
 // Next advances the batch to the next message.
@@ -126,30 +90,103 @@ func (b *Batch) Next() bool {
 		return false
 	}
 
-	// Use our concrete parser
-	size, err := parseHeader(b.bufr)
+	// 1. Read Version Prefix (e.g., "p1:")
+	prefix, err := b.bufr.ReadString(':')
 	if err != nil {
 		if err != io.EOF {
-			b.err = fmt.Errorf("header parse error: %w", err)
+			b.err = fmt.Errorf("failed to read version: %w", err)
 		}
 		return false
 	}
-
-	// Manage the buffer
-	if cap(b.current) < size {
-		b.current = make([]byte, size)
-	} else {
-		b.current = b.current[:size]
-	}
-
-	// Read the actual data
-	_, err = io.ReadFull(b.bufr, b.current)
-	if err != nil {
-		b.err = fmt.Errorf("payload read error: %w", err)
+	if prefix != "p1:" {
+		b.err = fmt.Errorf("unexpected version: %q", prefix)
 		return false
 	}
 
-	return true
+	// 2. Read Total Record Length
+	lenStr, err := b.bufr.ReadString(':')
+	if err != nil {
+		b.err = fmt.Errorf("failed to read record length: %w", err)
+		return false
+	}
+	totalLen, err := strconv.Atoi(strings.TrimSuffix(lenStr, ":"))
+	if err != nil {
+		b.err = fmt.Errorf("invalid record length: %w", err)
+		return false
+	}
+
+	// 3. Read the entire record body into memory based on totalLen
+	recordBody := make([]byte, totalLen)
+	_, err = io.ReadFull(b.bufr, recordBody)
+	if err != nil {
+		b.err = fmt.Errorf("payload read error (truncated record): %w", err)
+		return false
+	}
+
+	// 4. Parse TLVs inside the record body
+	return b.parseTLVs(recordBody)
+}
+
+func (b *Batch) parseTLVs(data []byte) bool {
+	pos := 0
+	found := false
+
+	// Reset current fields for the new record
+	b.current = nil
+	b.currentMeta = ""
+	b.currentAttr = ""
+
+	for pos < len(data) {
+		// 1. Ensure we have at least "T:" (2 bytes)
+		if pos+2 > len(data) {
+			break
+		}
+
+		tag := data[pos]
+		if data[pos+1] != ':' {
+			break // Malformed: missing colon after tag
+		}
+		pos += 2
+
+		// 2. Extract the length (find the next colon)
+		endLen := pos
+		for endLen < len(data) && data[endLen] != ':' {
+			endLen++
+		}
+		if endLen >= len(data) {
+			break // Malformed: missing colon after length
+		}
+
+		valLen, err := strconv.Atoi(string(data[pos:endLen]))
+		if err != nil {
+			break // Malformed: length is not an integer
+		}
+		pos = endLen + 1
+
+		// 3. Extract the value
+		if pos+valLen > len(data) {
+			break // Malformed: value length exceeds remaining data
+		}
+
+		value := data[pos : pos+valLen]
+		pos += valLen
+
+		// 4. Assign based on tag
+		switch tag {
+		case 'd':
+			b.current = value
+			found = true
+		case 'm':
+			b.currentMeta = string(value)
+		case 'a':
+			b.currentAttr = string(value)
+		default:
+			// Unknown tags (like 'z') are ignored but correctly skipped
+			// because we already advanced 'pos' by 'valLen'
+		}
+	}
+
+	return found
 }
 
 // Message returns the most recent message parsed by Next.
