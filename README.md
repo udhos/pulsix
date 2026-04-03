@@ -214,3 +214,4 @@ BUCKET=bucket-name QUEUE_URL=https://sqs.us-east-1.amazonaws.com/123412341234/qu
 - [ ] Dispatcher is an app/service/daemon that consumes Pulsix and directs to other systems (possible targets: another Pulsix, SNS, SQS, S3).
 - [ ] Sample injection tool (reads from SQS, injects into Pulsix).
 - [ ] Add explicit encoding for metadata and attribute.
+- [ ] Add primary API that automatically accumulates messages into batches and flushes them on limited periods. It must somehow signal the caller when specific messages were secured into reliable delivery, allowing the caller to mark them as delivered.
