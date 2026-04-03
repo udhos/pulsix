@@ -212,4 +212,5 @@ BUCKET=bucket-name QUEUE_URL=https://sqs.us-east-1.amazonaws.com/123412341234/qu
 - [ ] Replace DeleteMessage with DeleteMessageBatch for better efficiency.
 - [ ] Review logs.
 - [ ] Dispatcher is an app/service/daemon that consumes Pulsix and directs to other systems (possible targets: another Pulsix, SNS, SQS, S3).
-- [ ] Sample injection tool (reads from SQS, injects into Pulsix)
+- [ ] Sample injection tool (reads from SQS, injects into Pulsix).
+- [ ] Add explicit encoding for metadata and attribute.
