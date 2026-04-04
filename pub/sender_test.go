@@ -51,12 +51,12 @@ func TestSender_SendAndAck(t *testing.T) {
 		t.Errorf("expected AckedUpTo=%d, got %d", id2, ack.AckedUpTo)
 	}
 
-	sender.Close(context.Background())
+	sender.Close()
 }
 
 func TestSender_IDsAreMonotonic(t *testing.T) {
 	sender, _ := newTestSender(t)
-	defer sender.Close(context.Background())
+	defer sender.Close()
 
 	const n = 100
 	ids := make([]uint64, n)
@@ -87,7 +87,7 @@ func TestSender_ConcurrentSenders(t *testing.T) {
 		FlushThresholdMessages: 64,
 		FlushThresholdBytes:    50 * 1024 * 1024,
 	})
-	defer sender.Close(context.Background())
+	defer sender.Close()
 
 	const (
 		workers   = 8
@@ -100,12 +100,12 @@ func TestSender_ConcurrentSenders(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(workers)
-	for worker := 0; worker < workers; worker++ {
+	for worker := range workers {
 		worker := worker
 		go func() {
 			defer wg.Done()
 			base := worker * perWorker
-			for i := 0; i < perWorker; i++ {
+			for i := range perWorker {
 				id, err := sender.Send(context.Background(), pulsix.Message{Data: []byte("concurrent")})
 				if err != nil {
 					errCh <- err
@@ -168,7 +168,7 @@ func TestSender_FlushThresholdMessages(t *testing.T) {
 		FlushThresholdMessages: 3,
 		FlushThresholdBytes:    50 * 1024 * 1024,
 	})
-	defer sender.Close(context.Background())
+	defer sender.Close()
 
 	for i := range 3 {
 		_, err := sender.Send(context.Background(), pulsix.Message{Data: []byte{byte(i)}})
@@ -195,7 +195,7 @@ func TestSender_CloseFlushesRemaining(t *testing.T) {
 		t.Fatalf("Send failed: %v", err)
 	}
 
-	sender.Close(context.Background())
+	sender.Close()
 
 	// After Close, ackChan is closed. Drain it and look for the ack.
 	found := false
@@ -211,7 +211,7 @@ func TestSender_CloseFlushesRemaining(t *testing.T) {
 
 func TestSender_SendAfterClose(t *testing.T) {
 	sender, _ := newTestSender(t)
-	sender.Close(context.Background())
+	sender.Close()
 
 	_, err := sender.Send(context.Background(), pulsix.Message{Data: []byte("late")})
 	if err == nil {
@@ -272,9 +272,7 @@ func TestSender_HardFailAfterRetries(t *testing.T) {
 
 	t.Logf("Terminal boundary ack error: %v", reportedErr)
 
-	if err := sender.Close(context.Background()); err != nil {
-		t.Fatalf("expected Close without terminal error, got %v", err)
-	}
+	sender.Close()
 }
 
 func TestSender_ReuseAfterHardFail(t *testing.T) {
@@ -293,7 +291,7 @@ func TestSender_ReuseAfterHardFail(t *testing.T) {
 		FlushThresholdBytes:    50 * 1024 * 1024,
 		HardFailDeadline:       250 * time.Millisecond,
 	})
-	defer sender.Close(context.Background())
+	defer sender.Close()
 
 	// Phase 1: force a hard fail window.
 	if _, err := sender.Send(context.Background(), pulsix.Message{Data: []byte("will-fail-1")}); err != nil {

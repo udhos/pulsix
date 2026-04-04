@@ -164,13 +164,12 @@ func (s *Sender) AckChan() <-chan Ack {
 // Close flushes any pending messages, stops the background flusher,
 // and closes the AckChan. Blocks until all in-flight work is complete.
 // Terminal hard-fail boundaries are reported on AckChan as Ack{Err: err}.
-func (s *Sender) Close(_ context.Context) error {
+func (s *Sender) Close() {
 	s.closed.Store(true)
 	s.closeOnce.Do(func() {
 		close(s.done)
 	})
 	s.wg.Wait()
-	return nil
 }
 
 // ErrSenderClosed is returned by Send when the Sender has been closed.

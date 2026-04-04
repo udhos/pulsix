@@ -95,9 +95,7 @@ func main() {
 	}
 	fmt.Printf("Ack wait time: %s\n", time.Since(ackWaitStart))
 
-	if err := sender.Close(ctx); err != nil {
-		log.Fatalf("❌ Sender close failed: %v", err)
-	}
+	sender.Close()
 
 	fmt.Println("✅ Messages sent and durably acked.")
 }

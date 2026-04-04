@@ -90,9 +90,7 @@ func main() {
 	}
 	fmt.Printf("Ack wait time: %s\n", time.Since(ackWaitStart))
 
-	if err := sender.Close(ctx); err != nil {
-		log.Fatalf("Close failed: %v", err)
-	}
+	sender.Close()
 
 	fmt.Printf("\n--- Verification ---\n")
 	fmt.Printf("Data stored in: %s\n", dataDir)

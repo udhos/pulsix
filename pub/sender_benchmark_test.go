@@ -49,9 +49,7 @@ func BenchmarkSenderInject100k(b *testing.B) {
 			}
 		}
 
-		if err := sender.Close(ctx); err != nil {
-			b.Fatalf("close failed: %v", err)
-		}
+		sender.Close()
 	}
 }
 
@@ -100,9 +98,7 @@ func BenchmarkSenderInject100kConcurrent8(b *testing.B) {
 
 		wg.Wait()
 
-		if err := sender.Close(ctx); err != nil {
-			b.Fatalf("close failed: %v", err)
-		}
+		sender.Close()
 	}
 }
 
@@ -138,8 +134,6 @@ func BenchmarkSenderTimeBasedFlush(b *testing.B) {
 			b.Fatal("timed out waiting for time-based flush ack")
 		}
 
-		if err := sender.Close(ctx); err != nil {
-			b.Fatalf("close failed: %v", err)
-		}
+		sender.Close()
 	}
 }

@@ -40,7 +40,8 @@ Typical flow:
 
 1. Call `Send(msg)` for each message and keep returned IDs as needed by your app.
 2. Read acknowledgments and treat IDs `<= AckedUpTo` as safely delivered to Pulsix durable storage.
-3. Call `Close()` during shutdown to flush pending messages and release resources.
+3. If `Ack.Err` is reported, stop expecting further durability for unacked IDs and decide whether to retry them.
+4. Call `Close()` during shutdown to flush pending messages and release resources.
 
 Example setup and send loop:
 
@@ -66,7 +67,8 @@ Example acknowledgment handling:
 ```go
 for ack := range sender.AckChan() {
   if ack.Err != nil {
-    // terminal boundary: retry IDs > last durable watermark
+    // hard-fail boundary: caller should treat IDs > last successful
+    // AckedUpTo as not durably confirmed and retry if needed.
     log.Printf("terminal boundary: %v", ack.Err)
     continue
   }
@@ -74,13 +76,12 @@ for ack := range sender.AckChan() {
   // all IDs <= ack.AckedUpTo are durable
 }
 
-if err := sender.Close(ctx); err != nil {
-  // close/flush shutdown failure only
-}
-
-Note: the sender uses blocking ack delivery. Callers must keep draining AckChan;
-if AckChan is not drained, sender progress can stall once the ack buffer is full.
 ```
+
+`Close()` is used to stop the sender and wait for shutdown.
+
+Note: the sender uses blocking ack delivery. Callers must keep draining `AckChan`;
+if `AckChan` is not drained, sender progress can stall once the ack buffer is full.
 
 When `SendBatch()` returns without error, the data in that explicit batch is guaranteed to be durable in S3 and visible to consumers via SQS.
 
