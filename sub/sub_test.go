@@ -79,8 +79,8 @@ func TestSub_ReceiveAndLifecycle(t *testing.T) {
 func TestSub_FullStream(t *testing.T) {
 	key := "test.batch"
 
-	// Two records in p1 format
-	content := "p1:9:d:5:hellop1:9:d:5:world"
+	// Two records in p1 format under a single file-level version prefix.
+	content := "p1:9:d:5:hello9:d:5:world"
 
 	mockQueue := &MockQueue{Notifications: []Notification{&MockNotification{Key: key}}}
 	mockStorage := &MockStorage{Data: map[string]string{key: content}}

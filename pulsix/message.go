@@ -23,7 +23,7 @@ type Metadata struct {
 	MessageID string `json:"message_id"`
 }
 
-// EncodeTLV encodes a message.
+// EncodeTLV encodes a single record body prefixed by its record length.
 func (m *Message) EncodeTLV(w io.Writer) error {
 	var attrBytes, metaBytes []byte
 	var attrHeader, metaHeader string
@@ -48,8 +48,8 @@ func (m *Message) EncodeTLV(w io.Writer) error {
 		len(attrHeader) + len(attrBytes) +
 		len(dataHeader) + len(m.Data)
 
-	// 5. Write the Record Prefix
-	if _, err := fmt.Fprintf(w, "p1:%d:", totalLen); err != nil {
+	// 5. Write the record length prefix.
+	if _, err := fmt.Fprintf(w, "%d:", totalLen); err != nil {
 		return err
 	}
 

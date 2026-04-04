@@ -33,14 +33,15 @@ func TestSendBatch(t *testing.T) {
 	const fixedID = "FIXED_ID_FOR_TESTING_1234567"
 
 	// This is the exact string the encoder produces with your fixed ID
-	// p1:61:m:45:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:5:hello
+	// p1:61:m:45:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:5:hello62:m:45:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:6:pulsix
 	// Breakdown:
 	// m tag: "m:45:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}" (52 bytes)
 	// d tag: "d:5:hello" (9 bytes)
 	// Total body: 61 bytes.
-	wantRecord1 := `p1:61:m:45:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:5:hello`
-	wantRecord2 := `p1:62:m:45:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:6:pulsix`
-	fullExpected := wantRecord1 + wantRecord2
+	wantPrefix := `p1:`
+	wantRecord1 := `61:m:45:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:5:hello`
+	wantRecord2 := `62:m:45:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:6:pulsix`
+	fullExpected := wantPrefix + wantRecord1 + wantRecord2
 
 	mockStore := &mockStorage{}
 	pub := New(Options{

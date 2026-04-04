@@ -85,6 +85,10 @@ func (p *Pub) SendBatch(ctx context.Context, messages []pulsix.Message) error {
 			pw.CloseWithError(err)
 		}()
 
+		if _, err = io.WriteString(pw, VersionP1+":"); err != nil {
+			return
+		}
+
 		for _, m := range messages {
 			m.Metadata.MessageID = p.options.GenerateIDFunc()
 			if err = m.EncodeTLV(pw); err != nil {

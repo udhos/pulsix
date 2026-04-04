@@ -101,7 +101,6 @@ func TestSender_ConcurrentSenders(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(workers)
 	for worker := range workers {
-		worker := worker
 		go func() {
 			defer wg.Done()
 			base := worker * perWorker

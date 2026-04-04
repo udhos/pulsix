@@ -99,23 +99,23 @@ Consumers listen for SQS notifications and fetch the corresponding batch of mess
 
 1 - One file stores one batch of messages.
 
-2 - A file is a sequence of records.
+2 - A file begins with a single version prefix and then contains a sequence of records.
 
-3 - Every record has this format:
+3 - A file has this format:
 
 ```bash
-<2-bytes version><record>
+<2-bytes version>:<record><record>...<record>
 ```
 
-4 - The first version is `p1` (pulsix version 1). So the first two bytes of every record are `0x70 0x31` (ASCII "p1").
+4 - The first version is `p1` (pulsix version 1). So every p1 file starts with `0x70 0x31 0x3a` (ASCII `p1:`).
 
 5 - p1 record is defined as:
 
 ```bash
-p1:<total_record_length>:<tlv1><tlv2>...<tlvn>
+<total_record_length>:<tlv1><tlv2>...<tlvn>
 ```
 
-p1 record holds a single message.
+A p1 record holds a single message.
 
 `<total_record_length>` is the total length in ascii decimal, like "1234".
 
@@ -123,7 +123,7 @@ p1 record holds a single message.
 
 The total_record_length accounts exactly the full number of bytes AFTER the `:` that follows the total_record_length, and up to-and-including the last TLV byte of the record.
 
-That is to say the total_record_length is the byte-length of the list of TLVs, excluding the 2 bytes of version and the `<total_record_length>:` field itself.
+That is to say the total_record_length is the byte-length of the list of TLVs, excluding the file version prefix and the `<total_record_length>:` field itself.
 
 tlv is defined as:
 
@@ -159,17 +159,18 @@ Similar to total_record_length, the length field accounts exactly the byte-lengt
 - User Data: `hello` (5 bytes)
 
 **Breakdown:**
-- **Prefix:** `p1:24:` (The `24` represents the sum of all TLV bytes following this colon)
+**File Prefix:** `p1:`
+- **Record Prefix:** `24:` (The `24` represents the sum of all TLV bytes following this colon)
 - **TLV 1 (Attributes):** `a:9:j:{"a":"b"}` (6 bytes of overhead + 9 bytes value = 15 bytes)
 - **TLV 2 (Data):** `d:5:hello` (4 bytes of overhead + 5 bytes value = 9 bytes)
 
-**Final Wire Record:**
+**Final Wire File With One Message:**
 `p1:24:a:9:j:{"a":"b"}d:5:hello`
 
 **Multiple Messages:**
 A record transports a single message.
 If a producer batches two identical messages:
-`p1:24:a:9:j:{"a":"b"}d:5:hellop1:24:a:9:j:{"a":"b"}d:5:hello`
+`p1:24:a:9:j:{"a":"b"}d:5:hello24:a:9:j:{"a":"b"}d:5:hello`
 
 # How to setup cross-account access
 

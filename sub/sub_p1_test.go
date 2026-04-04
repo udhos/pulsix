@@ -33,10 +33,9 @@ func TestNext_P1Format(t *testing.T) {
 			wantData: "",
 		},
 		{
-			name:        "Invalid version prefix",
-			input:       "x1:22:m:3:001",
-			wantErr:     true,
-			errContains: "unexpected version",
+			name:    "Unknown version is ignored",
+			input:   "x1:22:m:3:001",
+			wantErr: false,
 		},
 		{
 			name:        "Truncated record (total length mismatch)",
@@ -69,6 +68,16 @@ func TestNext_P1Format(t *testing.T) {
 			}
 
 			ok := b.Next()
+
+			if tt.name == "Unknown version is ignored" {
+				if ok {
+					t.Errorf("expected Next() to ignore unknown version and return false")
+				}
+				if b.err != nil {
+					t.Errorf("expected no surfaced error for unknown version, got %v", b.err)
+				}
+				return
+			}
 
 			if tt.wantErr {
 				if ok {
@@ -114,9 +123,9 @@ func TestNext_P1Format(t *testing.T) {
 
 func TestStream_MultipleP1Records(t *testing.T) {
 	// Two records:
-	// 1. p1:4:d:0: (empty)
-	// 2. p1:9:d:5:world
-	input := "p1:4:d:0:p1:9:d:5:world"
+	// 1. 4:d:0: (empty)
+	// 2. 9:d:5:world
+	input := "p1:4:d:0:9:d:5:world"
 	b := &Batch{
 		bufr: bufio.NewReader(strings.NewReader(input)),
 	}
@@ -142,7 +151,7 @@ func TestP1_RecordJumping(t *testing.T) {
 
 	// Record 1: Claims 5 bytes, but we put "p1:XX" inside it.
 	// A good parser skips exactly 5 bytes after the length colon.
-	input := "p1:5:abcdep1:9:d:5:valid"
+	input := "p1:5:abcde9:d:5:valid"
 
 	b := &Batch{
 		bufr: bufio.NewReader(strings.NewReader(input)),

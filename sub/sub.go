@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -81,30 +82,38 @@ type Batch struct {
 	bufr         *bufio.Reader
 	current      pulsix.Message
 	err          error
+	versionRead  bool
+	skipped      bool
 }
 
 // Next advances the batch to the next message.
 func (b *Batch) Next() bool {
-	if b.err != nil {
+	if b.err != nil || b.skipped {
 		return false
 	}
 
-	// 1. Read Version Prefix (e.g., "p1:")
-	prefix, err := b.bufr.ReadString(':')
-	if err != nil {
-		if err != io.EOF {
-			b.err = fmt.Errorf("failed to read version: %w", err)
+	if !b.versionRead {
+		prefix, err := b.bufr.ReadString(':')
+		if err != nil {
+			if err != io.EOF || prefix != "" {
+				b.err = fmt.Errorf("failed to read version: %w", err)
+			}
+			return false
 		}
-		return false
-	}
-	if prefix != "p1:" {
-		b.err = fmt.Errorf("unexpected version: %q", prefix)
-		return false
+		if prefix != "p1:" {
+			slog.Error("unsupported pulsix batch version", "key", b.GetKey(), "version", strings.TrimSuffix(prefix, ":"))
+			b.skipped = true
+			return false
+		}
+		b.versionRead = true
 	}
 
-	// 2. Read Total Record Length
+	// Read total record length for the next record.
 	lenStr, err := b.bufr.ReadString(':')
 	if err != nil {
+		if err == io.EOF && lenStr == "" {
+			return false
+		}
 		b.err = fmt.Errorf("failed to read record length: %w", err)
 		return false
 	}
@@ -114,7 +123,7 @@ func (b *Batch) Next() bool {
 		return false
 	}
 
-	// 3. Read the entire record body into memory based on totalLen
+	// Read the entire record body into memory based on totalLen.
 	recordBody := make([]byte, totalLen)
 	_, err = io.ReadFull(b.bufr, recordBody)
 	if err != nil {
@@ -122,7 +131,7 @@ func (b *Batch) Next() bool {
 		return false
 	}
 
-	// 4. Parse TLVs inside the record body
+	// Parse TLVs inside the record body.
 	return b.parseTLVs(recordBody)
 }
 
