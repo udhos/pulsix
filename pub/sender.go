@@ -19,6 +19,9 @@ const (
 	// DefaultFlushThresholdBytes is the default maximum byte size of a batch.
 	DefaultFlushThresholdBytes = int64(50 * 1024 * 1024) // 50MB
 
+	// DefaultAckChannelSize is the default buffer size for AckChan.
+	DefaultAckChannelSize = 100
+
 	// HardFailDeadline is the default retry window before declaring a hard-fail boundary.
 	// Keep this default for production; test code may override it to speed up failure-path tests.
 	HardFailDeadline = 10 * time.Second
@@ -39,6 +42,10 @@ type SendOptions struct {
 	// FlushThresholdBytes is the maximum size in bytes of a batch.
 	// Defaults to DefaultFlushThresholdBytes.
 	FlushThresholdBytes int64
+
+	// AckChannelSize is the buffer size for AckChan.
+	// Defaults to DefaultAckChannelSize.
+	AckChannelSize int
 
 	// HardFailDeadline is the maximum time to retry a failed batch before
 	// reporting a hard-fail boundary. Defaults to the package HardFailDeadline.
@@ -105,6 +112,9 @@ func NewSender(opts SendOptions) *Sender {
 	if opts.FlushThresholdBytes == 0 {
 		opts.FlushThresholdBytes = DefaultFlushThresholdBytes
 	}
+	if opts.AckChannelSize == 0 {
+		opts.AckChannelSize = DefaultAckChannelSize
+	}
 	if opts.HardFailDeadline == 0 {
 		opts.HardFailDeadline = HardFailDeadline
 	}
@@ -113,7 +123,7 @@ func NewSender(opts SendOptions) *Sender {
 		pub:   New(opts.Options),
 		opts:  opts,
 		inbox: make(chan pendingMessage, opts.FlushThresholdMessages*2),
-		ackCh: make(chan Ack, 64),
+		ackCh: make(chan Ack, opts.AckChannelSize),
 		done:  make(chan struct{}),
 	}
 
@@ -216,11 +226,7 @@ func (s *Sender) flushLoop() {
 			s.state = stateNormal
 			s.failedBatch = nil
 			s.failureStart = time.Time{}
-			select {
-			case s.ackCh <- Ack{AckedUpTo: maxID}:
-			default:
-				// ackCh is full; drop rather than block the flusher.
-			}
+			s.ackCh <- Ack{AckedUpTo: maxID}
 			attempt = 0 // Reset retry counter on success.
 			return true
 		}
@@ -238,11 +244,7 @@ func (s *Sender) flushLoop() {
 		elapsed := time.Since(s.failureStart)
 		if elapsed > s.opts.HardFailDeadline {
 			s.state = stateFailed
-			select {
-			case s.ackCh <- Ack{Err: err}:
-			default:
-				// If caller is not consuming AckChan, do not block flushing.
-			}
+			s.ackCh <- Ack{Err: err}
 			return false
 		}
 

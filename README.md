@@ -55,6 +55,7 @@ sender := pub.NewSender(pub.SendOptions{
   FlushThresholdAge:      time.Second,
   FlushThresholdMessages: 10_000,
   FlushThresholdBytes:    50 * 1024 * 1024,
+  AckChannelSize:         100,
 })
 
 id, err := sender.Send(ctx, pulsix.Message{Data: []byte("hello")})
@@ -76,6 +77,9 @@ for ack := range sender.AckChan() {
 if err := sender.Close(ctx); err != nil {
   // close/flush shutdown failure only
 }
+
+Note: the sender uses blocking ack delivery. Callers must keep draining AckChan;
+if AckChan is not drained, sender progress can stall once the ack buffer is full.
 ```
 
 When `SendBatch()` returns without error, the data in that explicit batch is guaranteed to be durable in S3 and visible to consumers via SQS.
