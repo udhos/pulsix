@@ -24,11 +24,30 @@ We only support Golang for now.
 
 ## Producer
 
+### Send API
+
 The primary sending API is `Send()`. It accumulates messages automatically and flushes them in batches based on configured thresholds (age, message count, bytes).
 
-`SendBatch()` is still available as a lower-level synchronous primitive, but `Send()` is the main API for production use.
+ABSTRACT
 
-### Send API Synopsis
+From the caller's perspective, there are three sets of messages:
+
+1. Unsent: Messages yet to be sent to `Send()`.
+2. Unacked: Messages sent via `Send()` but not yet acknowledged as durable.
+3. Acked: Messages acknowledged as durably persisted.
+
+The abstract caller's role is two-fold:
+
+1. Move messages from Unsent to Unacked by calling `Send()`.
+2. Move messages from Unacked to Acked by reading acknowledgments from `AckChan()`.
+
+Consider these important rules for role 2:
+
+1. When an AckedUpTo is received from AckChan, the caller must move all messages with ID <= AckedUpTo from Unacked to Acked.
+2. When an error is received from AckChan, all messages in Unacked must be reverted to Unsent.
+3. The caller must continuously drain the AckChan because failing to do so might eventually stall the sender progress.
+
+SYNOPSIS
 
 `Send()` is goroutine-safe and returns a monotonically increasing ID per message.
 
@@ -83,7 +102,11 @@ for ack := range sender.AckChan() {
 Note: the sender uses blocking ack delivery. Callers must keep draining `AckChan`;
 if `AckChan` is not drained, sender progress can stall once the ack buffer is full.
 
-When `SendBatch()` returns without error, the data in that explicit batch is guaranteed to be durable in S3 and visible to consumers via SQS.
+### SendBatch API
+
+`SendBatch()` is available as a lower-level synchronous primitive, but `Send()` is the main API recommended for general usage.
+
+When `SendBatch()` returns without error, the data in that explicit batch is guaranteed to be durable in S3 and eventually visible to consumers via SQS.
 
 The SendBatch API writes messages in batches to S3, triggering a SQS notification for each batch. The SQS message contains the S3 object key, which serves as the pointer to the batch of messages.
 
