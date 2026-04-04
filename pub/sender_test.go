@@ -75,6 +75,87 @@ func TestSender_IDsAreMonotonic(t *testing.T) {
 	}
 }
 
+func TestSender_ConcurrentSenders(t *testing.T) {
+	store := &mockStorage{}
+	sender := NewSender(SendOptions{
+		Options: Options{
+			Storage:        store,
+			Prefix:         "test",
+			GenerateIDFunc: func() string { return "FIXED_ID_FOR_TESTING_1234567" },
+		},
+		FlushThresholdAge:      10 * time.Millisecond,
+		FlushThresholdMessages: 64,
+		FlushThresholdBytes:    50 * 1024 * 1024,
+	})
+	defer sender.Close(context.Background())
+
+	const (
+		workers   = 8
+		perWorker = 250
+		total     = workers * perWorker
+	)
+
+	ids := make([]uint64, total)
+	errCh := make(chan error, workers)
+
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for worker := 0; worker < workers; worker++ {
+		worker := worker
+		go func() {
+			defer wg.Done()
+			base := worker * perWorker
+			for i := 0; i < perWorker; i++ {
+				id, err := sender.Send(context.Background(), pulsix.Message{Data: []byte("concurrent")})
+				if err != nil {
+					errCh <- err
+					return
+				}
+				ids[base+i] = id
+			}
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("concurrent send failed: %v", err)
+		}
+	}
+
+	seen := make(map[uint64]struct{}, total)
+	var maxID uint64
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			t.Fatalf("duplicate id detected: %d", id)
+		}
+		seen[id] = struct{}{}
+		if id > maxID {
+			maxID = id
+		}
+	}
+
+	if len(seen) != total {
+		t.Fatalf("expected %d unique ids, got %d", total, len(seen))
+	}
+
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case ack := <-sender.AckChan():
+			if ack.Err != nil {
+				t.Fatalf("unexpected ack error under concurrent sends: %v", ack.Err)
+			}
+			if ack.AckedUpTo >= maxID {
+				return
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for concurrent send ack coverage")
+		}
+	}
+}
+
 func TestSender_FlushThresholdMessages(t *testing.T) {
 	store := &mockStorage{}
 	sender := NewSender(SendOptions{

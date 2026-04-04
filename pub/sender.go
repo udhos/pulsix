@@ -190,11 +190,39 @@ func (s *Sender) flushLoop() {
 	defer ticker.Stop()
 
 	var (
-		batch       []pendingMessage
-		batchSize   int64
-		attempt     int // Retry attempt count for exponential backoff
-		nextRetryAt time.Time
+		batch     []pendingMessage
+		batchSize int64
+		attempt   int // Retry attempt count for exponential backoff
 	)
+
+	var retryTimer *time.Timer
+
+	stopRetryTimer := func() {
+		if retryTimer == nil {
+			return
+		}
+		if !retryTimer.Stop() {
+			select {
+			case <-retryTimer.C:
+			default:
+			}
+		}
+		retryTimer = nil
+	}
+
+	scheduleRetry := func(delay time.Duration) {
+		if retryTimer == nil {
+			retryTimer = time.NewTimer(delay)
+			return
+		}
+		if !retryTimer.Stop() {
+			select {
+			case <-retryTimer.C:
+			default:
+			}
+		}
+		retryTimer.Reset(delay)
+	}
 
 	// calculateBackoff returns the wait duration for the given retry attempt.
 	calculateBackoff := func(attempt int) time.Duration {
@@ -226,6 +254,7 @@ func (s *Sender) flushLoop() {
 			s.state = stateNormal
 			s.failedBatch = nil
 			s.failureStart = time.Time{}
+			stopRetryTimer()
 			s.ackCh <- Ack{AckedUpTo: maxID}
 			attempt = 0 // Reset retry counter on success.
 			return true
@@ -237,13 +266,14 @@ func (s *Sender) flushLoop() {
 			s.failedBatch = batch
 			s.failureStart = time.Now()
 			attempt = 0
-			nextRetryAt = time.Now().Add(calculateBackoff(attempt))
+			scheduleRetry(calculateBackoff(attempt))
 		}
 
 		// Check if we've exceeded the hard fail deadline.
 		elapsed := time.Since(s.failureStart)
 		if elapsed > s.opts.HardFailDeadline {
 			s.state = stateFailed
+			stopRetryTimer()
 			s.ackCh <- Ack{Err: err}
 			return false
 		}
@@ -261,7 +291,7 @@ func (s *Sender) flushLoop() {
 			s.failedBatch = nil
 			s.failureStart = time.Time{}
 			attempt = 0
-			nextRetryAt = time.Time{}
+			stopRetryTimer()
 		}
 
 		// Accumulate message into batch.
@@ -283,6 +313,11 @@ func (s *Sender) flushLoop() {
 	}
 
 	for {
+		var retryC <-chan time.Time
+		if retryTimer != nil {
+			retryC = retryTimer.C
+		}
+
 		select {
 		case pm, ok := <-s.inbox:
 			if !ok {
@@ -309,13 +344,11 @@ func (s *Sender) flushLoop() {
 				}
 			}
 
-			// Retry is scheduled against a stable timestamp to avoid starvation
-			// from frequent ticker events.
-			if s.state == stateRetrying && !nextRetryAt.IsZero() && !time.Now().Before(nextRetryAt) {
+		case <-retryC:
+			if s.state == stateRetrying {
 				if flush(s.failedBatch) {
 					// Do not clear current batch here; it may contain new messages
 					// that arrived while the failed batch was being retried.
-					nextRetryAt = time.Time{}
 					ticker.Reset(s.opts.FlushThresholdAge)
 				} else if s.state == stateFailed {
 					// Drop only the failed retry batch. Keep any already-queued
@@ -323,16 +356,17 @@ func (s *Sender) flushLoop() {
 					s.failedBatch = nil
 					s.failureStart = time.Time{}
 					attempt = 0
-					nextRetryAt = time.Time{}
+					stopRetryTimer()
 					s.state = stateNormal
 					ticker.Reset(s.opts.FlushThresholdAge)
 				} else {
-					nextRetryAt = time.Now().Add(calculateBackoff(attempt))
+					scheduleRetry(calculateBackoff(attempt))
 				}
 			}
 
 		case <-s.done:
 			// Shutdown initiated; flush pending and exit.
+			stopRetryTimer()
 			for {
 				select {
 				case pm := <-s.inbox:
