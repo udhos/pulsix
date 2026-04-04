@@ -163,49 +163,77 @@ func (b *Batch) parseTLVs(data []byte) bool {
 		}
 		pos = endLen + 1
 
-		// 3. Extract the value
-		if pos+valLen > len(data) {
-			break // Malformed: value length exceeds remaining data
+		value, nextPos, ok := b.readTLVValue(data, pos, tag, valLen)
+		if !ok {
+			if b.err != nil {
+				return false
+			}
+			break
 		}
+		pos = nextPos
 
-		value := data[pos : pos+valLen]
-		pos += valLen
-
-		// 4. Assign based on tag to the pulsix.Message fields
-		switch tag {
-		case 'd':
-			// Note: This slice points into recordBody.
-			// If the user needs it to persist, they must copy it.
-			b.current.Data = value
+		if b.applyTLV(tag, value) {
 			found = true
-		case 'm':
-
-			// The publisher sends: {"message_id":"XYZ"}
-			// We want to extract just "XYZ" for the struct field.
-			var temp pulsix.Metadata
-			if err := json.Unmarshal(value, &temp); err == nil && temp.MessageID != "" {
-				b.current.Metadata.MessageID = temp.MessageID
-			} else {
-				// Fallback to raw string if JSON unmarshal fails
-				b.current.Metadata.MessageID = string(value)
-			}
-
-		case 'a':
-			// The P1 format stores attributes as a JSON object string.
-			// We unmarshal that directly into our map.
-			if len(value) > 0 {
-				if err := json.Unmarshal(value, &b.current.Attributes); err != nil {
-					// In a production scenario, you might want to log this
-					// or set b.err, but for now we skip malformed attributes.
-					continue
-				}
-			}
-		default:
-			// Unknown tags are skipped (already handled by advancing pos)
 		}
 	}
 
 	return found
+}
+
+func (b *Batch) readTLVValue(data []byte, pos int, tag byte, valLen int) ([]byte, int, bool) {
+	if tag == 'm' || tag == 'a' {
+		// Metadata and attributes are encoded as: <tag>:<length>:<encoding>:<value>
+		if pos+2 > len(data) {
+			b.err = fmt.Errorf("malformed %c field: missing encoding marker", tag)
+			return nil, pos, false
+		}
+		encoding := data[pos]
+		if data[pos+1] != ':' {
+			b.err = fmt.Errorf("malformed %c field: missing colon after encoding marker", tag)
+			return nil, pos, false
+		}
+		pos += 2
+
+		if encoding != 'j' {
+			b.err = fmt.Errorf("unsupported encoding for %c: %q", tag, encoding)
+			return nil, pos, false
+		}
+	}
+
+	if pos+valLen > len(data) {
+		return nil, pos, false // Malformed: value length exceeds remaining data
+	}
+
+	return data[pos : pos+valLen], pos + valLen, true
+}
+
+func (b *Batch) applyTLV(tag byte, value []byte) bool {
+	switch tag {
+	case 'd':
+		// Note: This slice points into recordBody.
+		// If the user needs it to persist, they must copy it.
+		b.current.Data = value
+		return true
+	case 'm':
+		// The publisher sends JSON metadata: {"message_id":"XYZ"}
+		// We want to extract just "XYZ" for the struct field.
+		var temp pulsix.Metadata
+		if err := json.Unmarshal(value, &temp); err == nil && temp.MessageID != "" {
+			b.current.Metadata.MessageID = temp.MessageID
+		}
+	case 'a':
+		// The P1 format stores attributes as a JSON object string.
+		// We unmarshal that directly into our map.
+		if len(value) > 0 {
+			if err := json.Unmarshal(value, &b.current.Attributes); err != nil {
+				// In a production scenario, you might want to log this
+				// or set b.err, but for now we skip malformed attributes.
+				return false
+			}
+		}
+	}
+
+	return false
 }
 
 // Message returns the most recent message parsed by Next.

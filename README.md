@@ -80,6 +80,15 @@ Each TLV field holds a piece of the message.
 - Type 'a' means user defined attributes.
 - Type 'd' means the actual user message data.
 
+For `m` and `a`, the value encoding is explicit and currently uses a single-byte marker:
+
+```bash
+m:<length>:j:<value>
+a:<length>:j:<value>
+```
+
+`j` means JSON encoding.
+
 Length is the length of the value in ascii decimal, like "1234".
 Length is always surrounded by `:`.
 Similar to total_record_length, the length field accounts exactly the byte-length of the value field.
@@ -91,17 +100,17 @@ Similar to total_record_length, the length field accounts exactly the byte-lengt
 - User Data: `hello` (5 bytes)
 
 **Breakdown:**
-- **Prefix:** `p1:22:` (The `22` represents the sum of all TLV bytes following this colon)
-- **TLV 1 (Attributes):** `a:9:{"a":"b"}` (4 bytes of overhead + 9 bytes value = 13 bytes)
+- **Prefix:** `p1:24:` (The `24` represents the sum of all TLV bytes following this colon)
+- **TLV 1 (Attributes):** `a:9:j:{"a":"b"}` (6 bytes of overhead + 9 bytes value = 15 bytes)
 - **TLV 2 (Data):** `d:5:hello` (4 bytes of overhead + 5 bytes value = 9 bytes)
 
 **Final Wire Record:**
-`p1:22:a:9:{"a":"b"}d:5:hello`
+`p1:24:a:9:j:{"a":"b"}d:5:hello`
 
 **Multiple Messages:**
 A record transports a single message.
 If a producer batches two identical messages:
-`p1:22:a:9:{"a":"b"}d:5:hellop1:22:a:9:{"a":"b"}d:5:hello`
+`p1:24:a:9:j:{"a":"b"}d:5:hellop1:24:a:9:j:{"a":"b"}d:5:hello`
 
 # How to setup cross-account access
 
@@ -213,5 +222,5 @@ BUCKET=bucket-name QUEUE_URL=https://sqs.us-east-1.amazonaws.com/123412341234/qu
 - [ ] Review logs.
 - [ ] Dispatcher is an app/service/daemon that consumes Pulsix and directs to other systems (possible targets: another Pulsix, SNS, SQS, S3).
 - [ ] Sample injection tool (reads from SQS, injects into Pulsix).
-- [ ] Add explicit encoding for metadata and attribute.
+- [x] Add explicit encoding for metadata and attribute.
 - [ ] Add primary API that automatically accumulates messages into batches and flushes them on limited periods. It must somehow signal the caller when specific messages were secured into reliable delivery, allowing the caller to mark them as delivered.

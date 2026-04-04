@@ -15,7 +15,7 @@ type mockStorage struct {
 	LastKey     string
 }
 
-func (m *mockStorage) PutObject(ctx context.Context, key string, r io.Reader, size int64) error {
+func (m *mockStorage) PutObject(_ context.Context, key string, r io.Reader, _ int64) error {
 	m.LastKey = key
 	data, err := io.ReadAll(r)
 	if err != nil {
@@ -25,7 +25,7 @@ func (m *mockStorage) PutObject(ctx context.Context, key string, r io.Reader, si
 	return nil
 }
 
-func (m *mockStorage) GetObject(ctx context.Context, key string) (io.ReadCloser, error) {
+func (m *mockStorage) GetObject(_ context.Context, _ string) (io.ReadCloser, error) {
 	return io.NopCloser(strings.NewReader(m.LastContent)), nil
 }
 
@@ -33,13 +33,13 @@ func TestSendBatch(t *testing.T) {
 	const fixedID = "FIXED_ID_FOR_TESTING_1234567"
 
 	// This is the exact string the encoder produces with your fixed ID
-	// p1:59:m:45:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:5:hello
+	// p1:61:m:45:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:5:hello
 	// Breakdown:
-	// m tag: "m:45:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}" (50 bytes)
+	// m tag: "m:45:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}" (52 bytes)
 	// d tag: "d:5:hello" (9 bytes)
-	// Total body: 59 bytes.
-	wantRecord1 := `p1:59:m:45:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:5:hello`
-	wantRecord2 := `p1:60:m:45:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:6:pulsix`
+	// Total body: 61 bytes.
+	wantRecord1 := `p1:61:m:45:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:5:hello`
+	wantRecord2 := `p1:62:m:45:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:6:pulsix`
 	fullExpected := wantRecord1 + wantRecord2
 
 	mockStore := &mockStorage{}

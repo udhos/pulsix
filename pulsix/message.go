@@ -31,13 +31,13 @@ func (m *Message) EncodeTLV(w io.Writer) error {
 	// 1. Prepare Metadata (only if MessageID is set)
 	if m.Metadata.MessageID != "" {
 		metaBytes, _ = json.Marshal(m.Metadata)
-		metaHeader = fmt.Sprintf("m:%d:", len(metaBytes))
+		metaHeader = fmt.Sprintf("m:%d:j:", len(metaBytes))
 	}
 
 	// 2. Prepare Attributes (only if map is not empty)
 	if len(m.Attributes) > 0 {
 		attrBytes, _ = json.Marshal(m.Attributes)
-		attrHeader = fmt.Sprintf("a:%d:", len(attrBytes))
+		attrHeader = fmt.Sprintf("a:%d:j:", len(attrBytes))
 	}
 
 	// 3. Prepare Data (Always included)

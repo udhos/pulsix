@@ -21,7 +21,7 @@ func TestNext_P1Format(t *testing.T) {
 	}{
 		{
 			name:        "Valid packed p1 record",
-			input:       "p1:29:m:3:001a:9:{\"a\":\"b\"}d:5:hello",
+			input:       "p1:51:m:20:j:{\"message_id\":\"001\"}a:9:j:{\"a\":\"b\"}d:5:hello",
 			wantMeta:    "001",
 			wantAttrKey: "a",
 			wantAttrVal: "b",
@@ -53,6 +53,12 @@ func TestNext_P1Format(t *testing.T) {
 			name:     "Binary safety: Colon inside value",
 			input:    "p1:10:d:6:a:b:c:",
 			wantData: "a:b:c:",
+		},
+		{
+			name:        "Reject unsupported metadata encoding",
+			input:       "p1:18:m:3:x:001d:5:hello",
+			wantErr:     true,
+			errContains: "unsupported encoding",
 		},
 	}
 
