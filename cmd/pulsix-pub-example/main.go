@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
+	"time"
 
 	"github.com/udhos/pulsix/pub"
 	"github.com/udhos/pulsix/pulsix"
@@ -28,25 +30,68 @@ func main() {
 		QueueDir: queueDir,
 	}
 
-	// 2. Create the Publisher
-	publisher := pub.New(pub.Options{
-		Storage: store,
-		Prefix:  "events",
-	})
-
-	// 3. Send a Batch
 	ctx := context.Background()
 
+	count := 1
+	if rawCount := os.Getenv("COUNT"); rawCount != "" {
+		parsedCount, err := strconv.Atoi(rawCount)
+		if err != nil || parsedCount <= 0 {
+			log.Fatalf("invalid COUNT=%q: expected positive integer", rawCount)
+		}
+		count = parsedCount
+	}
+
+	// 2. Create the Sender (async, auto-batching API)
+	sender := pub.NewSender(pub.SendOptions{
+		Options: pub.Options{
+			Storage: store,
+			Prefix:  "events",
+		},
+	})
+
+	fmt.Println("Pulsix Producer starting...")
+
+	// 3. Send messages and track IDs
 	messages := []pulsix.Message{
 		{Data: []byte(`{"event": "login", "user": "alice"}`), Attributes: map[string]string{"key1": "val1"}},
 		{Data: []byte(`{"event": "click", "button": "buy"}`), Attributes: map[string]string{"key2": "val2"}},
 	}
 
-	fmt.Println("🚀 Pulsix Producer starting...")
+	if count <= len(messages) {
+		for i, msg := range messages[:count] {
+			fmt.Printf("Message %d: %s\n", i+1, string(msg.Data))
+		}
+	} else {
+		fmt.Printf("Sending sample messages %d times\n", count)
+	}
 
-	err := publisher.SendBatch(ctx, messages)
-	if err != nil {
-		log.Fatalf("❌ Failed: %v", err)
+	var lastID uint64
+	var i int
+	for range count {
+		i = (i + 1) % len(messages)
+		msg := messages[i]
+		id, err := sender.Send(ctx, msg)
+		if err != nil {
+			log.Fatalf("Send failed: %v", err)
+		}
+		lastID = id
+	}
+
+	// 4. Wait for ack confirming all messages are durable
+	ackWaitStart := time.Now()
+	for ack := range sender.AckChan() {
+		if ack.Err != nil {
+			log.Fatalf("Ack error: %v", ack.Err)
+		}
+		fmt.Printf("Acked up to ID %d\n", ack.AckedUpTo)
+		if ack.AckedUpTo >= lastID {
+			break
+		}
+	}
+	fmt.Printf("Ack wait time: %s\n", time.Since(ackWaitStart))
+
+	if err := sender.Close(ctx); err != nil {
+		log.Fatalf("Close failed: %v", err)
 	}
 
 	fmt.Printf("\n--- Verification ---\n")

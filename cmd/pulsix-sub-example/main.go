@@ -45,18 +45,27 @@ func main() {
 			fmt.Printf("\n📦 Processing Batch: %s\n", b.GetKey())
 
 			// 3. Stream through the messages
+			var received []pulsix.Message
 			for b.Next() {
 				msg := b.Message()
-				fmt.Printf("  📩 Msg: %s\n", string(msg.Data))
+				received = append(received, msg)
+			}
 
-				// Print the MessageID from the Metadata struct
-				if msg.Metadata.MessageID != "" {
-					fmt.Printf("     Metadata ID: %s\n", msg.Metadata.MessageID)
-				}
+			if len(received) < 3 {
+				for _, msg := range received {
+					fmt.Printf("  📩 Msg: %s\n", string(msg.Data))
 
-				if len(msg.Attributes) > 0 {
-					fmt.Printf("     Attributes: %v\n", msg.Attributes)
+					// Print the MessageID from the Metadata struct
+					if msg.Metadata.MessageID != "" {
+						fmt.Printf("     Metadata ID: %s\n", msg.Metadata.MessageID)
+					}
+
+					if len(msg.Attributes) > 0 {
+						fmt.Printf("     Attributes: %v\n", msg.Attributes)
+					}
 				}
+			} else {
+				fmt.Printf("  Received %d messages\n", len(received))
 			}
 
 			if err := b.Error(); err != nil {

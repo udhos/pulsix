@@ -24,7 +24,61 @@ We only support Golang for now.
 
 ## Producer
 
-Producers group messages into batches. When the SendBatch API returns without error, the data is guaranteed to be durable in S3 and visible to consumers via SQS.
+The primary sending API is `Send()`. It accumulates messages automatically and flushes them in batches based on configured thresholds (age, message count, bytes).
+
+`SendBatch()` is still available as a lower-level synchronous primitive, but `Send()` is the main API for production use.
+
+### Send API Synopsis
+
+`Send()` is goroutine-safe and returns a monotonically increasing ID per message.
+
+Batch durability is reported through acknowledgments carrying `AckedUpTo`.
+
+If an acknowledgment reports `AckedUpTo = X`, then all messages with ID `<= X` are durably persisted.
+
+Typical flow:
+
+1. Call `Send(msg)` for each message and keep returned IDs as needed by your app.
+2. Read acknowledgments and treat IDs `<= AckedUpTo` as safely delivered to Pulsix durable storage.
+3. Call `Close()` during shutdown to flush pending messages and release resources.
+
+Example setup and send loop:
+
+```go
+ctx := context.Background()
+
+sender := pub.NewSender(pub.SendOptions{
+  Options: pub.Options{
+    Storage: store,
+    Prefix:  "events",
+  },
+  FlushThresholdAge:      time.Second,
+  FlushThresholdMessages: 10_000,
+  FlushThresholdBytes:    50 * 1024 * 1024,
+})
+
+id, err := sender.Send(ctx, pulsix.Message{Data: []byte("hello")})
+```
+
+Example acknowledgment handling:
+
+```go
+for ack := range sender.AckChan() {
+  if ack.Err != nil {
+    // terminal boundary: retry IDs > last durable watermark
+    log.Printf("terminal boundary: %v", ack.Err)
+    continue
+  }
+
+  // all IDs <= ack.AckedUpTo are durable
+}
+
+if err := sender.Close(ctx); err != nil {
+  // close/flush shutdown failure only
+}
+```
+
+When `SendBatch()` returns without error, the data in that explicit batch is guaranteed to be durable in S3 and visible to consumers via SQS.
 
 The SendBatch API writes messages in batches to S3, triggering a SQS notification for each batch. The SQS message contains the S3 object key, which serves as the pointer to the batch of messages.
 
@@ -223,4 +277,4 @@ BUCKET=bucket-name QUEUE_URL=https://sqs.us-east-1.amazonaws.com/123412341234/qu
 - [ ] Dispatcher is an app/service/daemon that consumes Pulsix and directs to other systems (possible targets: another Pulsix, SNS, SQS, S3).
 - [ ] Sample injection tool (reads from SQS, injects into Pulsix).
 - [x] Add explicit encoding for metadata and attribute.
-- [ ] Add primary API that automatically accumulates messages into batches and flushes them on limited periods. It must somehow signal the caller when specific messages were secured into reliable delivery, allowing the caller to mark them as delivered.
+- [x] Add primary API that automatically accumulates messages into batches and flushes them on limited periods. It must somehow signal the caller when specific messages were secured into reliable delivery, allowing the caller to mark them as delivered.

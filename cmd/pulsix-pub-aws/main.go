@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -22,6 +24,15 @@ func main() {
 
 	ctx := context.Background()
 
+	count := 1
+	if rawCount := os.Getenv("COUNT"); rawCount != "" {
+		parsedCount, err := strconv.Atoi(rawCount)
+		if err != nil || parsedCount <= 0 {
+			log.Fatalf("invalid COUNT=%q: expected positive integer", rawCount)
+		}
+		count = parsedCount
+	}
+
 	// 1. Load the default AWS Configuration
 	// This looks for AWS_REGION, AWS_ACCESS_KEY_ID, etc.
 	cfg, err := config.LoadDefaultConfig(ctx)
@@ -35,10 +46,12 @@ func main() {
 	// 3. Create the S3-backed storage
 	store := pulsix.NewS3Storage(s3Client, bucketName)
 
-	// 4. Initialize the Pulsix Publisher
-	publisher := pub.New(pub.Options{
-		Storage: store,
-		Prefix:  "events",
+	// 4. Initialize the Pulsix Sender (primary async API)
+	sender := pub.NewSender(pub.SendOptions{
+		Options: pub.Options{
+			Storage: store,
+			Prefix:  "events",
+		},
 	})
 
 	// 5. Define messages
@@ -47,19 +60,44 @@ func main() {
 		{Data: []byte(`{"event": "click", "button": "buy"}`), Attributes: map[string]string{"key2": "val2"}},
 	}
 
-	for i, msg := range messages {
-		fmt.Printf("📨 Message %d: %s\n", i+1, string(msg.Data))
+	if count <= len(messages) {
+		for i, msg := range messages[:count] {
+			fmt.Printf("📨 Message %d: %s\n", i+1, string(msg.Data))
+		}
+	} else {
+		fmt.Printf("Sending sample messages %d times\n", count)
 	}
 
 	fmt.Printf("🚀 Pulsix Producer starting (Bucket: %s)...\n", bucketName)
 
-	// 6. Send the Batch
-	// This will stream directly to S3 and trigger the SQS notification
-	// if S3 Event Notifications are configured.
-	err = publisher.SendBatch(ctx, messages)
-	if err != nil {
-		log.Fatalf("❌ Failed to send batch: %v", err)
+	var lastID uint64
+	var i int
+	for range count {
+		i = (i + 1) % len(messages)
+		msg := messages[i]
+		id, sendErr := sender.Send(ctx, msg)
+		if sendErr != nil {
+			log.Fatalf("❌ Failed to send message: %v", sendErr)
+		}
+		lastID = id
 	}
 
-	fmt.Println("✅ Batch fired! The Railgun has left the building.")
+	// Wait for durability watermark to cover all sent messages.
+	ackWaitStart := time.Now()
+	for ack := range sender.AckChan() {
+		if ack.Err != nil {
+			log.Fatalf("Ack error: %v", ack.Err)
+		}
+		fmt.Printf("Acked up to ID %d\n", ack.AckedUpTo)
+		if ack.AckedUpTo >= lastID {
+			break
+		}
+	}
+	fmt.Printf("Ack wait time: %s\n", time.Since(ackWaitStart))
+
+	if err := sender.Close(ctx); err != nil {
+		log.Fatalf("❌ Sender close failed: %v", err)
+	}
+
+	fmt.Println("✅ Messages sent and durably acked.")
 }
