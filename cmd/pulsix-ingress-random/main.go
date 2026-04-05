@@ -22,14 +22,8 @@ import (
 	"github.com/udhos/pulsix/pulsix"
 )
 
-type unsentMessage struct {
-	IngressID uint64
-	Msg       pulsix.Message
-}
-
 type unackedMessage struct {
-	IngressID uint64
-	Msg       pulsix.Message
+	Msg pulsix.Message
 }
 
 type modelStats struct {
@@ -42,61 +36,48 @@ type modelStats struct {
 
 type modelState struct {
 	mu      sync.Mutex
-	nextID  uint64
-	unsent  map[uint64]unsentMessage  // key: ingress ID
+	unsent  []pulsix.Message
 	unacked map[uint64]unackedMessage // key: sender ID
-	acked   map[uint64]unackedMessage // key: sender ID
 	stats   modelStats
 }
 
 func newModelState() *modelState {
 	return &modelState{
-		unsent:  make(map[uint64]unsentMessage),
+		unsent:  make([]pulsix.Message, 0),
 		unacked: make(map[uint64]unackedMessage),
-		acked:   make(map[uint64]unackedMessage),
 	}
 }
 
-func (s *modelState) addUnsent(batch []pulsix.Message) []unsentMessage {
+func (s *modelState) addUnsent(batch []pulsix.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	entries := make([]unsentMessage, 0, len(batch))
 	for _, msg := range batch {
-		ingressID := s.nextID
-		s.nextID++
-		entry := unsentMessage{IngressID: ingressID, Msg: msg}
-		s.unsent[ingressID] = entry
-		entries = append(entries, entry)
+		s.unsent = append(s.unsent, msg)
 		s.stats.Generated++
 	}
-
-	return entries
 }
 
-func (s *modelState) snapshotUnsent() []unsentMessage {
+func (s *modelState) drainUnsent() []pulsix.Message {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	entries := make([]unsentMessage, 0, len(s.unsent))
-	for _, entry := range s.unsent {
-		entries = append(entries, entry)
-	}
-
-	return entries
+	pending := make([]pulsix.Message, len(s.unsent))
+	copy(pending, s.unsent)
+	s.unsent = s.unsent[:0]
+	return pending
 }
 
-func (s *modelState) moveUnsentToUnacked(ingressID, senderID uint64) {
+func (s *modelState) addUnsentRetry(msgs []pulsix.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.unsent = append(s.unsent, msgs...)
+}
 
-	entry, ok := s.unsent[ingressID]
-	if !ok {
-		return
-	}
-
-	delete(s.unsent, ingressID)
-	s.unacked[senderID] = unackedMessage{IngressID: ingressID, Msg: entry.Msg}
+func (s *modelState) moveUnsentToUnacked(msg pulsix.Message, senderID uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.unacked[senderID] = unackedMessage{Msg: msg}
 	s.stats.Sent++
 }
 
@@ -105,10 +86,9 @@ func (s *modelState) moveUnackedToAcked(ackedUpTo uint64) int {
 	defer s.mu.Unlock()
 
 	moved := 0
-	for senderID, entry := range s.unacked {
+	for senderID := range s.unacked {
 		if senderID <= ackedUpTo {
 			delete(s.unacked, senderID)
-			s.acked[senderID] = entry
 			moved++
 		}
 	}
@@ -124,17 +104,17 @@ func (s *modelState) revertAllUnackedToUnsent() int {
 	reverted := 0
 	for senderID, entry := range s.unacked {
 		delete(s.unacked, senderID)
-		s.unsent[entry.IngressID] = unsentMessage(entry)
+		s.unsent = append(s.unsent, entry.Msg)
 		reverted++
 	}
 	s.stats.Reverted += uint64(reverted)
 	return reverted
 }
 
-func (s *modelState) snapshot() (int, int, int, modelStats) {
+func (s *modelState) snapshot() (int, int, modelStats) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.unsent), len(s.unacked), len(s.acked), s.stats
+	return len(s.unsent), len(s.unacked), s.stats
 }
 
 // simpleRandomRange returns a random integer in the range [low, high).
@@ -225,18 +205,29 @@ func main() {
 	state := newModelState()
 	log.Printf("pulsix-ingress-random starting: bucket=%s prefix=%s flush_interval=%s ingress_pace_sleep=%s seed=%d", bucket, prefix, flushInterval, ingressPaceSleep, randSeed)
 
+	//
+	// Spawn goroutine to consume acks and update model state accordingly.
+	//
+	// On Ack.Err, we revert all Unacked messages back to Unsent to be retried.
+	//
+	// On successful acks, we move messages from Unacked to Acked based on the
+	// AckedUpTo sender ID.
+	//
 	ackDone := make(chan struct{})
 	go func() {
 		defer close(ackDone)
 		for ack := range sender.AckChan() {
 			if ack.Err != nil {
+				// On error, revert all Unacked messages back to Unsent for retry.
 				reverted := state.revertAllUnackedToUnsent()
 				log.Printf("ack error: %v; reverted=%d from Unacked to Unsent", ack.Err, reverted)
 				continue
 			}
 
+			// On success, move messages from Unacked to Acked based on AckedUpTo sender ID.
 			moved := state.moveUnackedToAcked(ack.AckedUpTo)
-			unsentCount, unackedCount, ackedCount, stats := state.snapshot()
+			unsentCount, unackedCount, stats := state.snapshot()
+			ackedCount := stats.Acked
 			log.Printf("ack AckedUpTo=%d moved=%d state unsent=%d unacked=%d acked=%d stats generated=%d sent=%d acked=%d reverted=%d acks=%d",
 				ack.AckedUpTo,
 				moved,
@@ -272,20 +263,27 @@ func main() {
 
 		// Send API moves messages from Unsent to Unacked.
 		// This includes both newly generated messages and any reverted ones.
-		pending := state.snapshotUnsent()
-		for _, entry := range pending {
-			senderID, err := sender.Send(ctx, entry.Msg)
+		pending := state.drainUnsent()
+		retry := make([]pulsix.Message, 0)
+		for _, msg := range pending {
+			senderID, err := sender.Send(ctx, msg)
 			if err != nil {
 				if ctx.Err() != nil {
 					break
 				}
-				log.Printf("send failed ingress_id=%d: %v", entry.IngressID, err)
+				log.Printf("send failed: %v", err)
+				retry = append(retry, msg)
 				continue
 			}
-			state.moveUnsentToUnacked(entry.IngressID, senderID)
+			state.moveUnsentToUnacked(msg, senderID)
 		}
 
-		unsentCount, unackedCount, ackedCount, stats := state.snapshot()
+		if len(retry) > 0 {
+			state.addUnsentRetry(retry)
+		}
+
+		unsentCount, unackedCount, stats := state.snapshot()
+		ackedCount := stats.Acked
 		log.Printf("batch=%d generated=%d state unsent=%d unacked=%d acked=%d stats generated=%d sent=%d acked=%d reverted=%d acks=%d",
 			batchCount,
 			len(batch),
@@ -308,7 +306,8 @@ func main() {
 	sender.Close()
 	<-ackDone
 
-	unsentCount, unackedCount, ackedCount, stats := state.snapshot()
+	unsentCount, unackedCount, stats := state.snapshot()
+	ackedCount := stats.Acked
 	remainingUnacked := make([]uint64, 0, unackedCount)
 
 	state.mu.Lock()
