@@ -232,7 +232,7 @@ func (b *Batch) applyTLV(tag byte, value []byte) bool {
 		b.current.Data = value
 		return true
 	case 'm':
-		// The publisher sends JSON metadata: {"message_id":"XYZ"}
+		// The publisher sends JSON metadata: {"id":"XYZ"}
 		// We want to extract just "XYZ" for the struct field.
 		var temp pulsix.Metadata
 		if err := json.Unmarshal(value, &temp); err == nil && temp.MessageID != "" {

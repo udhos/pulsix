@@ -8,19 +8,23 @@ import (
 
 // Message represents a message.
 type Message struct {
-	// Data carries user data.
+	// Data holds actual opaque user message data.
 	Data []byte
 
-	// Attributes carries user defined attributes (user defined metadata).
+	// Attributes hold user defined attributes (user defined metadata).
 	Attributes map[string]string
 
-	// Metadata carries internal metadata (not user defined).
+	// Metadata holds internal metadata (not user defined).
 	Metadata Metadata
 }
 
 // Metadata represents internal metadata.
 type Metadata struct {
-	MessageID string `json:"message_id"`
+	MessageID string `json:"id"`
+}
+
+func (m *Message) hasMetadata() bool {
+	return m.Metadata.MessageID != ""
 }
 
 // EncodeTLV encodes a single record body prefixed by its record length.
@@ -29,7 +33,7 @@ func (m *Message) EncodeTLV(w io.Writer) error {
 	var attrHeader, metaHeader string
 
 	// 1. Prepare Metadata (only if MessageID is set)
-	if m.Metadata.MessageID != "" {
+	if m.hasMetadata() {
 		metaBytes, _ = json.Marshal(m.Metadata)
 		metaHeader = fmt.Sprintf("m:%d:j:", len(metaBytes)+2) // include encoding marker "j:"
 	}

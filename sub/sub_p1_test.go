@@ -21,7 +21,7 @@ func TestNext_P1Format(t *testing.T) {
 	}{
 		{
 			name:        "Valid packed p1 record",
-			input:       "p1:52:m:22:j:{\"message_id\":\"001\"}a:11:j:{\"a\":\"b\"}d:5:hello",
+			input:       `p1:44:m:14:j:{"id":"001"}a:11:j:{"a":"b"}d:5:hello`,
 			wantMeta:    "001",
 			wantAttrKey: "a",
 			wantAttrVal: "b",
