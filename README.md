@@ -123,7 +123,7 @@ Internally, Pulsix utilizes the AWS S3 Transfer Manager to handle multi-part upl
 
 Consumers listen for SQS notifications and fetch the corresponding batch of messages from S3 for processing.
 
-One critical aspect in consuming logic is to process all messages in the batch and then calling `Done()` before the SQS Visibility Timeout expires. If `Done()` is not called in time, the batch will be re-delivered, which can lead to duplicate processing. Benchmark that your consumer can process the batch within the Visibility Timeout (adjust the SQS timeout if needed).
+One critical aspect in consuming logic is to process all messages in the batch and then calling `Done()` before the SQS Visibility Timeout expires. If `Done()` is not called in time, the batch will be re-delivered, which can lead to duplicate processing. Benchmark that your consumer can process the batch within the Visibility Timeout. A good "rule of thumb": Set SQS Visibility Timeout to at least 3x your expected batch processing time. This will prevent SQS from re-delivering batches before your consumer has a chance to call `Done()`, thus avoiding unnecessary duplicates.
 
 SYNOPSIS
 
@@ -323,15 +323,15 @@ aws s3api put-bucket-lifecycle-configuration \
 
 We provide some programs in the `cmd` directory.
 
-Program | Description
---- | ---
-`pulsix-pub-aws` | Example producer that sends messages to Pulsix on AWS.
-`pulsix-sub-aws` | Example consumer that receives messages from Pulsix on AWS.
-`pulsix-pub-example` | Example producer that sends messages to Pulsix using filesystem storage (for testing).
-`pulsix-sub-example` | Example consumer that receives messages from Pulsix using filesystem storage (for testing).
-`pulsix-dispatcher` | TODO. Planned. Not ready yet. It will forward messages from Pulsix to other systems (SNS, SQS, another Pulsix, etc).
-`pulsix-ingress-sqs` | TODO. Planned. Not ready yet. It will read messages from SQS and inject them into Pulsix.
-`pulsix-ingress-random` | TODO. Planned. Not ready yet. It will generate random messages and inject them into Pulsix for testing.
+Program | Status | Description
+--- | --- | ---
+`pulsix-pub-aws` | ✅ Ready. | Example producer that sends messages to Pulsix on AWS.
+`pulsix-sub-aws` | ✅ Ready. | Example consumer that receives messages from Pulsix on AWS.
+`pulsix-pub-example` | ✅ Ready. | Example producer that sends messages to Pulsix using filesystem storage (for testing).
+`pulsix-sub-example` | ✅ Ready. | Example consumer that receives messages from Pulsix using filesystem storage (for testing).
+`pulsix-dispatcher` | 🛠️ Planned. | It will forward messages from Pulsix to other systems (SNS, SQS, another Pulsix, etc).
+`pulsix-ingress-sqs` | 🛠️ Planned. | It will read messages from SQS and inject them into Pulsix.
+`pulsix-ingress-random` | 🛠️ Planned. | It will generate random messages and inject them into Pulsix for testing.
 
 # Running the example clients
 
