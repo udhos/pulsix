@@ -33,7 +33,6 @@ func (q *SQSQueue) ReceiveNotifications(ctx context.Context) ([]Notification, er
 		QueueUrl:            aws.String(q.QueueURL),
 		MaxNumberOfMessages: 10,
 		WaitTimeSeconds:     20, // Long Polling for cost efficiency
-		VisibilityTimeout:   60, // Time to process the batch before it reappears
 	})
 	if err != nil {
 		return nil, err

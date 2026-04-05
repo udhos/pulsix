@@ -6,6 +6,24 @@ We only support AWS for now.
 
 We only support Golang for now.
 
+* [Why pulsix?](#why-pulsix)
+* [How it works](#how-it-works)
+  * [Producer](#producer)
+    * [Send API](#send-api)
+    * [SendBatch API](#sendbatch-api)
+  * [Consumer](#consumer)
+  * [Storage Format](#storage-format)
+    * [Storage Format Example](#storage-format-example)
+* [How to setup cross\-account access](#how-to-setup-cross-account-access)
+  * [Step 1: The SQS Access Policy (Account B)](#step-1-the-sqs-access-policy-account-b)
+  * [Step 2: The S3 Bucket Policy (Account A)](#step-2-the-s3-bucket-policy-account-a)
+  * [Step 3: Enable S3 Event Notifications](#step-3-enable-s3-event-notifications)
+* [Bucket Lifecycle](#bucket-lifecycle)
+* [Running the example clients](#running-the-example-clients)
+* [TODO](#todo)
+
+Created by [gh-md-toc](https://github.com/ekalinin/github-markdown-toc.go)
+
 # Why pulsix?
 
 - **Cost-Effective**: Zero idle cost. Pay for data moved, not for cluster uptime. Need to move billions of messages? We got you covered.
@@ -117,6 +135,31 @@ Internally, Pulsix utilizes the AWS S3 Transfer Manager to handle multi-part upl
 ## Consumer
 
 Consumers listen for SQS notifications and fetch the corresponding batch of messages from S3 for processing.
+
+One critical issue in consuming logic is to process all messages in the batch and then calling `Done()` before the SQS Visibility Timeout expires. If `Done()` is not called in time, the batch will be re-delivered, which can lead to duplicate processing. Benchmark that your consumer can process the batch within the Visibility Timeout (adjust the SQS timeout if needed).
+
+SYNOPSIS
+
+```golang
+batches, err := subscriber.Receive(ctx)
+
+// read forever
+for {
+  // scan batches for messages
+  for _, b := range batches {
+    // handle one batch
+
+    for b.Next() {
+      msg := b.Message()
+      // handle message in msg
+    }
+
+    // Tell Pulsix we are done with this batch,
+    // deleting the notification from SQS.
+    err := b.Done()
+  }
+}
+```
 
 ## Storage Format
 
