@@ -54,27 +54,30 @@ func (s *modelState) addUnsent(batch []pulsix.Message) {
 	}
 }
 
-func (s *modelState) drainUnsent() []pulsix.Message {
+func (s *modelState) peekUnsent() (pulsix.Message, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	pending := make([]pulsix.Message, len(s.unsent))
-	copy(pending, s.unsent)
-	s.unsent = s.unsent[:0]
-	return pending
+	if len(s.unsent) == 0 {
+		return pulsix.Message{}, false
+	}
+
+	return s.unsent[0], true
 }
 
-func (s *modelState) addUnsentRetry(msgs []pulsix.Message) {
+func (s *modelState) moveFrontUnsentToUnacked(senderID uint64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.unsent = append(s.unsent, msgs...)
-}
 
-func (s *modelState) moveUnsentToUnacked(msg pulsix.Message, senderID uint64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if len(s.unsent) == 0 {
+		return false
+	}
+
+	msg := s.unsent[0]
+	s.unsent = s.unsent[1:]
 	s.unacked[senderID] = msg
 	s.stats.Sent++
+	return true
 }
 
 func (s *modelState) moveUnackedToAcked(ackedUpTo uint64) int {
@@ -259,23 +262,21 @@ func main() {
 
 		// Send API moves messages from Unsent to Unacked.
 		// This includes both newly generated messages and any reverted ones.
-		pending := state.drainUnsent()
-		retry := make([]pulsix.Message, 0)
-		for _, msg := range pending {
+		for {
+			msg, ok := state.peekUnsent()
+			if !ok {
+				break
+			}
+
 			senderID, err := sender.Send(ctx, msg)
 			if err != nil {
 				if ctx.Err() != nil {
 					break
 				}
 				log.Printf("send failed: %v", err)
-				retry = append(retry, msg)
-				continue
+				break
 			}
-			state.moveUnsentToUnacked(msg, senderID)
-		}
-
-		if len(retry) > 0 {
-			state.addUnsentRetry(retry)
+			state.moveFrontUnsentToUnacked(senderID)
 		}
 
 		unsentCount, unackedCount, stats := state.snapshot()

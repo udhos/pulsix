@@ -31,16 +31,18 @@ func TestModelState_AckErrorNoMessageLoss(t *testing.T) {
 	}
 
 	state.addUnsent(batch)
-	pending := state.drainUnsent()
-	if len(pending) != total {
-		t.Fatalf("drainUnsent returned %d entries, want %d", len(pending), total)
+	if _, ok := state.peekUnsent(); !ok {
+		t.Fatalf("peekUnsent returned empty, want messages")
 	}
-	state.addUnsentRetry(pending)
 	assertUniqueAndTotal(t, state, total)
 
-	pending = state.drainUnsent()
-	for i, msg := range pending {
-		state.moveUnsentToUnacked(msg, uint64(100+i))
+	for i := range total {
+		if _, ok := state.peekUnsent(); !ok {
+			t.Fatalf("peekUnsent returned empty at i=%d", i)
+		}
+		if !state.moveFrontUnsentToUnacked(uint64(100 + i)) {
+			t.Fatalf("moveFrontUnsentToUnacked failed at i=%d", i)
+		}
 	}
 
 	unsent, unacked, stats := state.snapshot()
@@ -62,9 +64,13 @@ func TestModelState_AckErrorNoMessageLoss(t *testing.T) {
 	}
 	assertUniqueAndTotal(t, state, total)
 
-	pending = state.drainUnsent()
-	for i, msg := range pending {
-		state.moveUnsentToUnacked(msg, uint64(1000+i))
+	for i := range total {
+		if _, ok := state.peekUnsent(); !ok {
+			t.Fatalf("peekUnsent returned empty at retry i=%d", i)
+		}
+		if !state.moveFrontUnsentToUnacked(uint64(1000 + i)) {
+			t.Fatalf("moveFrontUnsentToUnacked failed at retry i=%d", i)
+		}
 	}
 
 	moved := state.moveUnackedToAcked(5000)
@@ -88,11 +94,19 @@ func TestModelState_AckedUpToMovesPrefixOnly(t *testing.T) {
 		{Data: []byte("b")},
 		{Data: []byte("c")},
 	})
-	pending := state.drainUnsent()
 
-	state.moveUnsentToUnacked(pending[0], 10)
-	state.moveUnsentToUnacked(pending[1], 11)
-	state.moveUnsentToUnacked(pending[2], 12)
+	if _, ok := state.peekUnsent(); !ok {
+		t.Fatalf("peekUnsent returned empty for first message")
+	}
+	if !state.moveFrontUnsentToUnacked(10) {
+		t.Fatal("moveFrontUnsentToUnacked failed for first message")
+	}
+	if !state.moveFrontUnsentToUnacked(11) {
+		t.Fatal("moveFrontUnsentToUnacked failed for second message")
+	}
+	if !state.moveFrontUnsentToUnacked(12) {
+		t.Fatal("moveFrontUnsentToUnacked failed for third message")
+	}
 
 	moved := state.moveUnackedToAcked(11)
 	if moved != 2 {
