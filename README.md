@@ -193,14 +193,14 @@ Each TLV field holds a piece of the message.
 - Type 'a' means user defined attributes.
 - Type 'd' means the actual user message data.
 
-For `m` and `a`, the value encoding is explicit and currently uses a single-byte marker:
+For `m` and `a`, the value encoding is an explicit single-byte marker.
 
 ```bash
 m:<length>:j:<value>
 a:<length>:j:<value>
 ```
 
-`j` means JSON encoding.
+`j` stands for JSON encoding. is the only encoding currently defined in version p1 and its support is required in both sending and parsing.
 
 Length is the length of the value in ascii decimal, like "1234".
 Length is always surrounded by `:`.
