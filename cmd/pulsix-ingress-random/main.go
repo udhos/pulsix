@@ -22,10 +22,6 @@ import (
 	"github.com/udhos/pulsix/pulsix"
 )
 
-type unackedMessage struct {
-	Msg pulsix.Message
-}
-
 type modelStats struct {
 	Generated uint64
 	Sent      uint64
@@ -37,14 +33,14 @@ type modelStats struct {
 type modelState struct {
 	mu      sync.Mutex
 	unsent  []pulsix.Message
-	unacked map[uint64]unackedMessage // key: sender ID
+	unacked map[uint64]pulsix.Message // key: sender ID
 	stats   modelStats
 }
 
 func newModelState() *modelState {
 	return &modelState{
 		unsent:  make([]pulsix.Message, 0),
-		unacked: make(map[uint64]unackedMessage),
+		unacked: make(map[uint64]pulsix.Message),
 	}
 }
 
@@ -77,7 +73,7 @@ func (s *modelState) addUnsentRetry(msgs []pulsix.Message) {
 func (s *modelState) moveUnsentToUnacked(msg pulsix.Message, senderID uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.unacked[senderID] = unackedMessage{Msg: msg}
+	s.unacked[senderID] = msg
 	s.stats.Sent++
 }
 
@@ -104,7 +100,7 @@ func (s *modelState) revertAllUnackedToUnsent() int {
 	reverted := 0
 	for senderID, entry := range s.unacked {
 		delete(s.unacked, senderID)
-		s.unsent = append(s.unsent, entry.Msg)
+		s.unsent = append(s.unsent, entry)
 		reverted++
 	}
 	s.stats.Reverted += uint64(reverted)
