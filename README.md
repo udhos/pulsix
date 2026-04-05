@@ -331,6 +331,20 @@ aws s3api put-bucket-lifecycle-configuration \
     --lifecycle-configuration file://lifecycle.json
 ```
 
+# Programs
+
+We provide some programs in the `cmd` directory.
+
+Program | Description
+--- | ---
+`pulsix-pub-aws` | Example producer that sends messages to Pulsix on AWS.
+`pulsix-sub-aws` | Example consumer that receives messages from Pulsix on AWS.
+`pulsix-pub-example` | Example producer that sends messages to Pulsix using filesystem storage (for testing).
+`pulsix-sub-example` | Example consumer that receives messages from Pulsix using filesystem storage (for testing).
+`pulsix-dispatcher` | TODO. Planned. Not ready yet. It will forward messages from Pulsix to other systems (SNS, SQS, another Pulsix, etc).
+`pulsix-ingress-sqs` | TODO. Planned. Not ready yet. It will read messages from SQS and inject them into Pulsix.
+`pulsix-ingress-random` | TODO. Planned. Not ready yet. It will generate random messages and inject them into Pulsix for testing.
+
 # Running the example clients
 
 ```bash
