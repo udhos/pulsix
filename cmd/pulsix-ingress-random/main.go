@@ -74,6 +74,18 @@ func (s *modelState) addUnsent(batch []pulsix.Message) []unsentMessage {
 	return entries
 }
 
+func (s *modelState) snapshotUnsent() []unsentMessage {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entries := make([]unsentMessage, 0, len(s.unsent))
+	for _, entry := range s.unsent {
+		entries = append(entries, entry)
+	}
+
+	return entries
+}
+
 func (s *modelState) moveUnsentToUnacked(ingressID, senderID uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -254,12 +266,14 @@ func main() {
 
 		batch := buildRandomBatch(low, high, payloadSize)
 
-		// Step 1 + 2: generate random batch and add all messages into Unsent.
-		entries := state.addUnsent(batch)
+		// Generate random batch and add all messages into Unsent.
+		state.addUnsent(batch)
 		batchCount++
 
-		// Step 3: Send API moves each message from Unsent to Unacked.
-		for _, entry := range entries {
+		// Send API moves messages from Unsent to Unacked.
+		// This includes both newly generated messages and any reverted ones.
+		pending := state.snapshotUnsent()
+		for _, entry := range pending {
 			senderID, err := sender.Send(ctx, entry.Msg)
 			if err != nil {
 				if ctx.Err() != nil {
