@@ -33,14 +33,14 @@ func TestSendBatch(t *testing.T) {
 	const fixedID = "FIXED_ID_FOR_TESTING_1234567"
 
 	// This is the exact string the encoder produces with your fixed ID
-	// p1:61:m:45:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:5:hello62:m:45:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:6:pulsix
+	// p1:61:m:47:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:5:hello62:m:47:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:6:pulsix
 	// Breakdown:
-	// m tag: "m:45:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}" (52 bytes)
+	// m tag: "m:47:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}" (52 bytes)
 	// d tag: "d:5:hello" (9 bytes)
 	// Total body: 61 bytes.
 	wantPrefix := `p1:`
-	wantRecord1 := `61:m:45:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:5:hello`
-	wantRecord2 := `62:m:45:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:6:pulsix`
+	wantRecord1 := `61:m:47:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:5:hello`
+	wantRecord2 := `62:m:47:j:{"message_id":"FIXED_ID_FOR_TESTING_1234567"}d:6:pulsix`
 	fullExpected := wantPrefix + wantRecord1 + wantRecord2
 
 	mockStore := &mockStorage{}

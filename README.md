@@ -173,7 +173,9 @@ a:<length>:j:<value>
 
 Length is the length of the value in ascii decimal, like "1234".
 Length is always surrounded by `:`.
-Similar to total_record_length, the length field accounts exactly the byte-length of the value field.
+Similar to total_record_length, the length field accounts exactly the byte-length of the TLV payload field.
+For `m` and `a`, this payload is `<encoding>:<value>`, so length includes the `j:` marker.
+For `d`, this payload is `<value>`.
 
 ### Storage Format Example
 
@@ -183,17 +185,17 @@ Similar to total_record_length, the length field accounts exactly the byte-lengt
 
 **Breakdown:**
 **File Prefix:** `p1:`
-- **Record Prefix:** `24:` (The `24` represents the sum of all TLV bytes following this colon)
-- **TLV 1 (Attributes):** `a:9:j:{"a":"b"}` (6 bytes of overhead + 9 bytes value = 15 bytes)
+- **Record Prefix:** `25:` (The `25` represents the sum of all TLV bytes following this colon)
+- **TLV 1 (Attributes):** `a:11:j:{"a":"b"}` (7 bytes of overhead + 9 bytes value = 16 bytes)
 - **TLV 2 (Data):** `d:5:hello` (4 bytes of overhead + 5 bytes value = 9 bytes)
 
 **Final Wire File With One Message:**
-`p1:24:a:9:j:{"a":"b"}d:5:hello`
+`p1:25:a:11:j:{"a":"b"}d:5:hello`
 
 **Multiple Messages:**
 A record transports a single message.
 If a producer batches two identical messages:
-`p1:24:a:9:j:{"a":"b"}d:5:hello24:a:9:j:{"a":"b"}d:5:hello`
+`p1:25:a:11:j:{"a":"b"}d:5:hello25:a:11:j:{"a":"b"}d:5:hello`
 
 # How to setup cross-account access
 

@@ -192,21 +192,29 @@ func (b *Batch) parseTLVs(data []byte) bool {
 func (b *Batch) readTLVValue(data []byte, pos int, tag byte, valLen int) ([]byte, int, bool) {
 	if tag == 'm' || tag == 'a' {
 		// Metadata and attributes are encoded as: <tag>:<length>:<encoding>:<value>
-		if pos+2 > len(data) {
+		// For m/a, <length> accounts for "<encoding>:<value>" bytes.
+		if pos+valLen > len(data) {
+			return nil, pos, false // Malformed: value length exceeds remaining data
+		}
+
+		raw := data[pos : pos+valLen]
+		if len(raw) < 2 {
 			b.err = fmt.Errorf("malformed %c field: missing encoding marker", tag)
 			return nil, pos, false
 		}
-		encoding := data[pos]
-		if data[pos+1] != ':' {
+
+		encoding := raw[0]
+		if raw[1] != ':' {
 			b.err = fmt.Errorf("malformed %c field: missing colon after encoding marker", tag)
 			return nil, pos, false
 		}
-		pos += 2
 
 		if encoding != 'j' {
 			b.err = fmt.Errorf("unsupported encoding for %c: %q", tag, encoding)
 			return nil, pos, false
 		}
+
+		return raw[2:], pos + valLen, true
 	}
 
 	if pos+valLen > len(data) {
