@@ -19,6 +19,7 @@ We only support Golang for now.
   * [Step 2: The S3 Bucket Policy (Account A)](#step-2-the-s3-bucket-policy-account-a)
   * [Step 3: Enable S3 Event Notifications](#step-3-enable-s3-event-notifications)
 * [Bucket Lifecycle](#bucket-lifecycle)
+* [Programs](#programs)
 * [Running the example clients](#running-the-example-clients)
 * [TODO](#todo)
 
@@ -76,8 +77,8 @@ If an acknowledgment reports `AckedUpTo = X`, then all messages with ID `<= X` a
 Typical flow:
 
 1. Call `Send(msg)` for each message and keep returned IDs as needed by your app.
-2. Read acknowledgments and treat IDs `<= AckedUpTo` as safely delivered to Pulsix durable storage.
-3. If `Ack.Err` is reported, stop expecting further durability for unacked IDs and decide whether to retry them.
+2. Read acknowledgments and treat all IDs `<= AckedUpTo` as safely delivered to Pulsix durable storage.
+3. If `Ack.Err` is reported, stop expecting further durability for unacked IDs and treat them as not sent at all.
 4. Call `Close()` during shutdown to flush pending messages and release resources.
 
 Example setup and send loop:
@@ -99,22 +100,6 @@ sender := pub.NewSender(pub.SendOptions{
 id, err := sender.Send(ctx, pulsix.Message{Data: []byte("hello")})
 ```
 
-Example acknowledgment handling:
-
-```go
-for ack := range sender.AckChan() {
-  if ack.Err != nil {
-    // hard-fail boundary: caller should treat IDs > last successful
-    // AckedUpTo as not durably confirmed and retry if needed.
-    log.Printf("terminal boundary: %v", ack.Err)
-    continue
-  }
-
-  // all IDs <= ack.AckedUpTo are durable
-}
-
-```
-
 `Close()` is used to stop the sender and wait for shutdown.
 
 Note: the sender uses blocking ack delivery. Callers must keep draining `AckChan`;
@@ -125,6 +110,8 @@ if `AckChan` is not drained, sender progress can stall once the ack buffer is fu
 `SendBatch()` is available as a lower-level synchronous primitive, but `Send()` is the main API recommended for general usage.
 
 When `SendBatch()` returns without error, the data in that explicit batch is guaranteed to be durable in S3 and eventually visible to consumers via SQS.
+
+`SendBatch()` is easier to use but its direct usage is discouraged because if allows for inefficient small batches. The `Send()` API is designed to automatically accumulate messages into efficient batches, so it is the recommended approach for most use cases.
 
 The SendBatch API writes messages in batches to S3, triggering a SQS notification for each batch. The SQS message contains the S3 object key, which serves as the pointer to the batch of messages.
 
