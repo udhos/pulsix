@@ -2,6 +2,7 @@ package pub
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -52,6 +53,8 @@ type SendOptions struct {
 	// This option exists mainly so tests can reduce waiting time; production code
 	// should generally use the default unless there is a clear operational need.
 	HardFailDeadline time.Duration
+
+	Debug bool // Enable debug logging.
 }
 
 // Ack signals that all messages with ID <= AckedUpTo are durably persisted.
@@ -243,6 +246,11 @@ func (s *Sender) flushLoop() {
 		maxID := batch[len(batch)-1].id
 		for i, pm := range batch {
 			msgs[i] = pm.msg
+		}
+
+		if s.opts.Debug {
+			slog.Info("DEBUG Sender.flushLoop",
+				"SendBatch_batch_size", len(msgs))
 		}
 
 		// Attempt to send.

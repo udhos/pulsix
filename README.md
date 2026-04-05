@@ -331,7 +331,7 @@ Program | Status | Description
 `pulsix-sub-example` | ✅ Ready. | Example consumer that receives messages from Pulsix using filesystem storage (for testing).
 `pulsix-dispatcher` | 🛠️ Planned. | It will forward messages from Pulsix to other systems (SNS, SQS, another Pulsix, etc).
 `pulsix-ingress-sqs` | 🛠️ Planned. | It will read messages from SQS and inject them into Pulsix.
-`pulsix-ingress-random` | 🛠️ Planned. | It will generate random messages and inject them into Pulsix for testing.
+`pulsix-ingress-random` | ✅ Ready. | Reference ingress model that generates random batches and injects them into Pulsix using the Send API.
 
 # Running the example clients
 
@@ -341,6 +341,9 @@ BUCKET=bucket-name pulsix-pub-aws
 
 # consumer
 BUCKET=bucket-name QUEUE_URL=https://sqs.us-east-1.amazonaws.com/123412341234/queue-name pulsix-sub-aws
+
+# inject random batches with Send API
+BUCKET=bucket-name pulsix-ingress-random
 ```
 
 # TODO

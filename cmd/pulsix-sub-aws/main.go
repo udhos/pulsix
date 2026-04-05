@@ -24,6 +24,7 @@ func main() {
 	if queueURL == "" {
 		log.Fatal("QUEUE_URL environment variable is required")
 	}
+	dumpMessages := os.Getenv("DUMP_MESSAGES") == "true"
 
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx)
@@ -59,9 +60,10 @@ func main() {
 				received = append(received, msg)
 			}
 
-			if len(received) < 3 {
-				for _, msg := range received {
-					fmt.Printf("  📩 Msg: %s\n", string(msg.Data))
+			fmt.Printf("  Received %d messages\n", len(received))
+			if dumpMessages {
+				for i, msg := range received {
+					fmt.Printf("  📩 Msg %d/%d: %s\n", i+1, len(received), string(msg.Data))
 
 					// Show Metadata
 					if msg.Metadata.MessageID != "" {
@@ -73,8 +75,6 @@ func main() {
 						fmt.Printf("     Attrs: %v\n", msg.Attributes)
 					}
 				}
-			} else {
-				fmt.Printf("  Received %d messages\n", len(received))
 			}
 
 			if err := b.Done(); err != nil {
