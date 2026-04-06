@@ -4,116 +4,26 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"math/rand"
 	"os"
 	"os/signal"
-	"slices"
 	"strconv"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/udhos/pulsix/inject"
 	"github.com/udhos/pulsix/pub"
 	"github.com/udhos/pulsix/pulsix"
 )
 
 type modelStats struct {
 	Generated uint64
-	Sent      uint64
 	Acked     uint64
-	Reverted  uint64
-	AcksSeen  uint64
-}
-
-type modelState struct {
-	mu      sync.Mutex
-	unsent  []pulsix.Message
-	unacked map[uint64]pulsix.Message // key: sender ID
-	stats   modelStats
-}
-
-func newModelState() *modelState {
-	return &modelState{
-		unsent:  make([]pulsix.Message, 0),
-		unacked: make(map[uint64]pulsix.Message),
-	}
-}
-
-func (s *modelState) addUnsent(batch []pulsix.Message) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for _, msg := range batch {
-		s.unsent = append(s.unsent, msg)
-		s.stats.Generated++
-	}
-}
-
-func (s *modelState) peekUnsent() (pulsix.Message, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if len(s.unsent) == 0 {
-		return pulsix.Message{}, false
-	}
-
-	return s.unsent[0], true
-}
-
-func (s *modelState) moveFrontUnsentToUnacked(senderID uint64) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if len(s.unsent) == 0 {
-		return false
-	}
-
-	msg := s.unsent[0]
-	s.unsent = s.unsent[1:]
-	s.unacked[senderID] = msg
-	s.stats.Sent++
-	return true
-}
-
-func (s *modelState) moveUnackedToAcked(ackedUpTo uint64) int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	moved := 0
-	for senderID := range s.unacked {
-		if senderID <= ackedUpTo {
-			delete(s.unacked, senderID)
-			moved++
-		}
-	}
-	s.stats.Acked += uint64(moved)
-	s.stats.AcksSeen++
-	return moved
-}
-
-func (s *modelState) revertAllUnackedToUnsent() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	reverted := 0
-	for senderID, entry := range s.unacked {
-		delete(s.unacked, senderID)
-		s.unsent = append(s.unsent, entry)
-		reverted++
-	}
-	s.stats.Reverted += uint64(reverted)
-	return reverted
-}
-
-func (s *modelState) snapshot() (int, int, modelStats) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return len(s.unsent), len(s.unacked), s.stats
 }
 
 // simpleRandomRange returns a random integer in the range [low, high).
@@ -171,17 +81,17 @@ func main() {
 		prefix = "events"
 	}
 
+	batchLimit := os.Getenv("BATCH_LIMIT")
+	if batchLimit == "" {
+		batchLimit = "3"
+	}
+	maxBatch, err := strconv.Atoi(batchLimit)
+	if err != nil || maxBatch <= 0 {
+		maxBatch = 3
+	}
+
 	flushInterval := getSenderFlushInterval()
 	ingressPaceSleep := getIngressPaceSleep()
-
-	randSeed := time.Now().UnixNano()
-	if rawSeed := os.Getenv("RANDOM_SEED"); rawSeed != "" {
-		parsedSeed, err := strconv.ParseInt(rawSeed, 10, 64)
-		if err != nil {
-			log.Fatalf("invalid RANDOM_SEED=%q: %v", rawSeed, err)
-		}
-		randSeed = parsedSeed
-	}
 
 	awsConfig, err := config.LoadDefaultConfig(context.Background())
 	if err != nil {
@@ -201,49 +111,23 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	state := newModelState()
-	log.Printf("pulsix-ingress-random starting: bucket=%s prefix=%s flush_interval=%s ingress_pace_sleep=%s seed=%d", bucket, prefix, flushInterval, ingressPaceSleep, randSeed)
+	var stats modelStats
+	var receiptSeq atomic.Uint64
 
-	//
-	// Spawn goroutine to consume acks and update model state accordingly.
-	//
-	// On Ack.Err, we revert all Unacked messages back to Unsent to be retried.
-	//
-	// On successful acks, we move messages from Unacked to Acked based on the
-	// AckedUpTo sender ID.
-	//
-	ackDone := make(chan struct{})
+	inj := inject.New(sender, func(_ string) {
+		atomic.AddUint64(&stats.Acked, 1)
+	}, 20_000)
+
+	runErr := make(chan error, 1)
 	go func() {
-		defer close(ackDone)
-		for ack := range sender.AckChan() {
-			if ack.Err != nil {
-				// On error, revert all Unacked messages back to Unsent for retry.
-				reverted := state.revertAllUnackedToUnsent()
-				log.Printf("ack error: %v; reverted=%d from Unacked to Unsent", ack.Err, reverted)
-				continue
-			}
-
-			// On success, move messages from Unacked to Acked based on AckedUpTo sender ID.
-			moved := state.moveUnackedToAcked(ack.AckedUpTo)
-			unsentCount, unackedCount, stats := state.snapshot()
-			ackedCount := stats.Acked
-			log.Printf("ack AckedUpTo=%d moved=%d state unsent=%d unacked=%d acked=%d stats generated=%d sent=%d acked=%d reverted=%d acks=%d",
-				ack.AckedUpTo,
-				moved,
-				unsentCount,
-				unackedCount,
-				ackedCount,
-				stats.Generated,
-				stats.Sent,
-				stats.Acked,
-				stats.Reverted,
-				stats.AcksSeen,
-			)
-		}
+		runErr <- inj.Run()
 	}()
 
-	batchCount := 0
-	for {
+	log.Printf("pulsix-ingress-random starting: bucket=%s prefix=%s flush_interval=%s ingress_pace_sleep=%s",
+		bucket, prefix, flushInterval, ingressPaceSleep)
+
+loop:
+	for batchCount := range maxBatch {
 		if ctx.Err() != nil {
 			break
 		}
@@ -256,42 +140,24 @@ func main() {
 
 		batch := buildRandomBatch(low, high, payloadSize)
 
-		// Generate random batch and add all messages into Unsent.
-		state.addUnsent(batch)
-		batchCount++
-
-		// Send API moves messages from Unsent to Unacked.
-		// This includes both newly generated messages and any reverted ones.
-		for {
-			msg, ok := state.peekUnsent()
-			if !ok {
-				break
+		for _, msg := range batch {
+			receipt := strconv.FormatUint(receiptSeq.Add(1)-1, 10)
+			select {
+			case inj.C <- inject.InjectMessage{Receipt: receipt, Data: msg.Data}:
+				atomic.AddUint64(&stats.Generated, 1)
+			case <-ctx.Done():
+				break loop
 			}
-
-			senderID, err := sender.Send(ctx, msg)
-			if err != nil {
-				if ctx.Err() != nil {
-					break
-				}
-				log.Printf("send failed: %v", err)
-				break
-			}
-			state.moveFrontUnsentToUnacked(senderID)
 		}
 
-		unsentCount, unackedCount, stats := state.snapshot()
-		ackedCount := stats.Acked
-		log.Printf("batch=%d generated=%d state unsent=%d unacked=%d acked=%d stats generated=%d sent=%d acked=%d reverted=%d acks=%d",
+		generated := atomic.LoadUint64(&stats.Generated)
+		acked := atomic.LoadUint64(&stats.Acked)
+		log.Printf("batch=%d generated=%d stats generated=%d acked=%d outstanding=%d",
 			batchCount,
 			len(batch),
-			unsentCount,
-			unackedCount,
-			ackedCount,
-			stats.Generated,
-			stats.Sent,
-			stats.Acked,
-			stats.Reverted,
-			stats.AcksSeen,
+			generated,
+			acked,
+			generated-acked,
 		)
 
 		if ingressPaceSleep > 0 {
@@ -299,36 +165,15 @@ func main() {
 		}
 	}
 
+	close(inj.C)
+	if err := <-runErr; err != nil {
+		log.Printf("inject run error: %v", err)
+	}
+
 	// Flush remaining in-flight messages and close AckChan.
 	sender.Close()
-	<-ackDone
 
-	unsentCount, unackedCount, stats := state.snapshot()
-	ackedCount := stats.Acked
-	remainingUnacked := make([]uint64, 0, unackedCount)
-
-	state.mu.Lock()
-	for id := range state.unacked {
-		remainingUnacked = append(remainingUnacked, id)
-	}
-	state.mu.Unlock()
-
-	slices.Sort(remainingUnacked)
-	if len(remainingUnacked) > 10 {
-		remainingUnacked = remainingUnacked[:10]
-	}
-
-	fmt.Printf("final state: unsent=%d unacked=%d acked=%d generated=%d sent=%d acked=%d reverted=%d acks=%d\n",
-		unsentCount,
-		unackedCount,
-		ackedCount,
-		stats.Generated,
-		stats.Sent,
-		stats.Acked,
-		stats.Reverted,
-		stats.AcksSeen,
-	)
-	if len(remainingUnacked) > 0 {
-		fmt.Printf("sample remaining unacked sender IDs: %v\n", remainingUnacked)
-	}
+	generated := atomic.LoadUint64(&stats.Generated)
+	acked := atomic.LoadUint64(&stats.Acked)
+	log.Printf("final stats: generated=%d acked=%d outstanding=%d", generated, acked, generated-acked)
 }
