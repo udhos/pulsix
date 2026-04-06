@@ -333,6 +333,7 @@ Program | Status | Description
 `pulsix-dispatcher` | 🛠️ Planned. | It will forward messages from Pulsix to other systems (SNS, SQS, another Pulsix, etc).
 `pulsix-ingress-sqs` | 🛠️ Planned. | It will read messages from SQS and inject them into Pulsix.
 `pulsix-ingress-random` | ✅ Ready. | Reference ingress model that generates random batches and injects them into Pulsix using the Send API.
+`pulsix-bench` | 🛠️ Planned. | Benchmark tool to profile end-to-end flow from producer to consumer, measuring latency and throughput under various Pulsix parameters.
 
 # Running the example clients
 
