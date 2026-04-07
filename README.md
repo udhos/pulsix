@@ -9,7 +9,7 @@ We only support Golang for now.
 * [Why pulsix?](#why-pulsix)
 * [How it works](#how-it-works)
   * [Producer](#producer)
-    * [Packge inject](#packge-inject)
+    * [Package inject](#Package-inject)
     * [Send API](#send-api)
     * [SendBatch API](#sendbatch-api)
   * [Consumer](#consumer)
@@ -51,7 +51,7 @@ There are three producing APIs, from high-level to low-level:
 2 - Package pub Sender with Send() API
 3 - Package pub with SendBatch() API
 
-### Packge inject
+### Package inject
 
 The `Injector` from the `inject` package runs the state-machine to move messages across the states defined in the Send API. All the Injector needs is a channel of messages to be sent and a callback to report when messages are durably persisted. It strives to provide a simpler interface on top of the complex Send API, abstracting away the details of batching and acknowledgment handling.
 
@@ -337,14 +337,14 @@ We provide some programs in the `cmd` directory.
 
 Program | Status | Description
 --- | --- | ---
-`pulsix-pub-aws` | ✅ Ready. | Example producer that sends messages to Pulsix on AWS.
-`pulsix-sub-aws` | ✅ Ready. | Example consumer that receives messages from Pulsix on AWS.
-`pulsix-pub-example` | ✅ Ready. | Example producer that sends messages to Pulsix using filesystem storage (for testing).
-`pulsix-sub-example` | ✅ Ready. | Example consumer that receives messages from Pulsix using filesystem storage (for testing).
-`pulsix-dispatcher` | 🛠️ Planned. | It will forward messages from Pulsix to other systems (SNS, SQS, another Pulsix, etc).
-`pulsix-ingress-sqs` | 🛠️ Planned. | It will read messages from SQS and inject them into Pulsix.
-`pulsix-ingress-random` | ✅ Ready. | Reference ingress model that generates random batches and injects them into Pulsix using the Send API.
-`pulsix-bench` | 🛠️ Planned. | Benchmark tool to profile end-to-end flow from producer to consumer, measuring latency and throughput under various Pulsix parameters.
+`pulsix-pub-aws`        | ✅ Ready.   | Example producer that sends messages to Pulsix on AWS.
+`pulsix-sub-aws`        | ✅ Ready.   | Example consumer that receives messages from Pulsix on AWS.
+`pulsix-pub-example`    | ✅ Ready.   | Example producer that sends messages to Pulsix using filesystem storage (for testing).
+`pulsix-sub-example`    | ✅ Ready.   | Example consumer that receives messages from Pulsix using filesystem storage (for testing).
+`pulsix-ingress-sqs`    | ✅ Ready.   | Sample ingress tool that reads from SQS and injects into Pulsix using package inject.
+`pulsix-ingress-random` | ✅ Ready.   | Reference ingress model that generates random batches and injects them into Pulsix using package inject.
+`pulsix-bench`          | 🛠️ Planned. | Benchmark tool to profile end-to-end flow from producer to consumer, measuring latency and throughput under various Pulsix parameters.
+`pulsix-dispatcher`     | 🛠️ Planned. | It will forward messages from Pulsix to other systems (SNS, SQS, another Pulsix, etc).
 
 # Running the example clients
 
@@ -357,6 +357,9 @@ BUCKET=bucket-name QUEUE_URL=https://sqs.us-east-1.amazonaws.com/123412341234/qu
 
 # inject random batches with Send API
 BUCKET=bucket-name pulsix-ingress-random
+
+# inject from source SQS into Pulsix using Send API
+BUCKET=bucket-name QUEUE_URL=https://sqs.us-east-1.amazonaws.com/123412341234/source-queue pulsix-ingress-sqs
 ```
 
 # FAQ
@@ -395,7 +398,7 @@ Consider a dual lane deployment.
 - [ ] Replace DeleteMessage with DeleteMessageBatch for better efficiency.
 - [ ] Review logs.
 - [ ] `pulsix-dispatcher` is an app/service/daemon that consumes Pulsix and directs to other systems (possible targets: another Pulsix, SNS, SQS, S3).
-- [ ] `pulsix-ingress-sqs`: sample injection tool (reads from SQS, injects into Pulsix).
+- [x] `pulsix-ingress-sqs`: sample injection tool (reads from SQS, injects into Pulsix).
 - [x] Add explicit encoding for metadata and attribute.
 - [x] Add primary API that automatically accumulates messages into batches and flushes them on limited periods. It must somehow signal the caller when specific messages were secured into reliable delivery, allowing the caller to mark them as delivered.
 - [ ] One slow consumer = visibility timeout risk. Help the consumer to avoid duplication of messages when the Visibility Timeout expires before the consumer can call `Done()`. Make the SDK track the byte offset of the next unprocessed record in the batch. The consumer must checkpoint every message processed by calling a new API like `Checkpoint()`, which will update the checkpointed offset. When the SDK downloads a batch possibly due to Visibility Timeout expiration, it can use the checkpointed offset to skip already processed messages, thus avoiding duplicates. The SDK can detect the batch was redelivered by keeping a cache of recently processed batches. The S3 key is a perfect ID for identifying redelivered batches. Open problem: cross-pod case. Can a pod benefit from checkpointing of another pod?
