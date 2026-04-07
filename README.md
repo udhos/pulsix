@@ -9,6 +9,7 @@ We only support Golang for now.
 * [Why pulsix?](#why-pulsix)
 * [How it works](#how-it-works)
   * [Producer](#producer)
+    * [Packge inject](#packge-inject)
     * [Send API](#send-api)
     * [SendBatch API](#sendbatch-api)
   * [Consumer](#consumer)
