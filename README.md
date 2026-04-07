@@ -254,7 +254,7 @@ If a producer batches two identical messages:
 The SQS queue must explicitly allow the S3 service from Account A to send messages to it. Without this, the "Pulse" will never reach your consumer.
 
 Queue Policy:
-
+8
 ```json
 {
   "Version": "2012-10-17",
@@ -409,3 +409,4 @@ Consider a dual lane deployment.
 - [X] Add FAQ to README to address common questions and best practices.
 - [ ] Write a benchmark tool `pulsix-bench` that can profile a complete end-to-end flow from producer to consumer, measuring latency and throughput under various pulsix parameters. It should support both in-memory or real AWS backends. Its mode of operation is like this: 1) Generate a number of messages to a limit. 2) Use the package `inject` to send those messages. 3) Use a consumer side to read all those messages. 4) When finished, report metrics about latency and throughput.
 - [X] Add experimental package `inject` that factors out the consuming logic from `pulsix-ingress-random`, making it easier to build custom ingress tools that read from other sources (Kafka, RabbitMQ, etc) and inject into Pulsix using the Send API. The package would build on the `pub.Sender`. It would take two inputs: 1) A channel for receiving messages to be sent. 2) A callback function to report the message was reliably sent.
+- [ ] Benchmark p1 encode/decode.
