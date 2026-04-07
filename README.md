@@ -44,9 +44,19 @@ Created by [gh-md-toc](https://github.com/ekalinin/github-markdown-toc.go)
 
 ## Producer
 
+There are three producing APIs, from high-level to low-level:
+
+1 - Package inject
+2 - Package pub Sender with Send() API
+3 - Package pub with SendBatch() API
+
+### Packge inject
+
+The `Injector` from the `inject` package runs the state-machine to move messages across the states defined in the Send API. All the Injector needs is a channel of messages to be sent and a callback to report when messages are durably persisted. It strives to provide a simpler interface on top of the complex Send API, abstracting away the details of batching and acknowledgment handling.
+
 ### Send API
 
-The primary sending API is `Send()`. It accumulates messages automatically and flushes them in batches based on configured thresholds (age, message count, bytes).
+The API `Send()` accumulates messages automatically and flushes them in batches based on configured thresholds (age, message count, bytes).
 
 ABSTRACT
 
@@ -108,7 +118,7 @@ if `AckChan` is not drained, sender progress can stall once the ack buffer is fu
 
 ### SendBatch API
 
-`SendBatch()` is available as a lower-level synchronous primitive, but `Send()` is the main API recommended for general usage.
+`SendBatch()` is available as a lower-level synchronous primitive.
 
 When `SendBatch()` returns without error, the data in that explicit batch is guaranteed to be durable in S3 and eventually visible to consumers via SQS.
 
