@@ -165,6 +165,10 @@ for {
 
 1 - One file stores one batch of messages.
 
+Batch object key in S3 has the following structure:
+
+    <prefix>/YYYY-MM/DD/HH/MM/<random_ksuid>.batch
+
 2 - A file begins with a single version prefix and then contains a sequence of records.
 
 3 - A file has this format:
