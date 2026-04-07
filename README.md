@@ -177,7 +177,7 @@ Batch object key in S3 has the following structure:
 <2-bytes version>:<record><record>...<record>
 ```
 
-4 - The first version is `p1` (pulsix version 1). So every p1 file starts with `0x70 0x31 0x3a` (ASCII `p1:`).
+4 - The first version is `p1` (pulsix version 1). So every p1 file starts with `0x70 0x31 0x3a` (ASCII `p1:`). p1 aims to provide a balance of nice  properties: streamable, parsing performance, self-describing, simplicity, ascii debugability possible without tools in many cases, support for 8bit clean opaque user data, some extensibility with TLVs.
 
 5 - p1 record is defined as:
 
@@ -203,7 +203,7 @@ Each TLV field holds a piece of the message.
 <type>:<length>:<value>
 ```
 
-`<type>` is 1 byte. We define 3 types that are ascii friendly for now:
+`<type>` is 1 byte. p1 defines 3 types that are ascii friendly:
 
 - Type 'm' means internal metadata.
 - Type 'a' means user defined attributes.
@@ -216,7 +216,7 @@ m:<length>:j:<value>
 a:<length>:j:<value>
 ```
 
-`j` stands for JSON encoding. is the only encoding currently defined in version p1 and its support is required in both sending and parsing.
+`j` stands for JSON encoding, is the only encoding defined in p1 so far and its support is **required** in both sending and parsing.
 
 Length is the length of the value in ascii decimal, like "1234".
 Length is always surrounded by `:`.
