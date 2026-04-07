@@ -47,9 +47,9 @@ Created by [gh-md-toc](https://github.com/ekalinin/github-markdown-toc.go)
 
 There are three producing APIs, from high-level to low-level:
 
-1 - Package inject
-2 - Package pub Sender with Send() API
-3 - Package pub with SendBatch() API
+1. Package inject
+2. Package pub Sender with Send() API
+3. Package pub with SendBatch() API
 
 ### Package inject
 
