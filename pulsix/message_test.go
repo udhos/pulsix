@@ -12,8 +12,10 @@ func TestMessage_EncodeTLV_Rigorous(t *testing.T) {
 		Data:       []byte{0xDE, 0xAD, 0xBE, 0xEF}, // Hex data
 	}
 
+	headerBuf := make([]byte, 0, 128) // Reusable buffer for encoding message headers
+
 	buf := new(bytes.Buffer)
-	_ = m.EncodeTLV(buf)
+	_ = m.EncodeTLV(buf, headerBuf)
 	res := buf.Bytes()
 
 	// 1. Find where the 'd' TLV starts

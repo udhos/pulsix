@@ -62,12 +62,15 @@ var ErrEmptyMessages = errors.New("no messages to send")
 // SendBatch persists a slice of messages to S3 as a single Pulsix batch.
 // It returns only after S3 confirms the write (Synchronous Persistence).
 // SendBatch encodes messages into the p1 format and sends them to storage.
-func (p *Pub) SendBatch(ctx context.Context, messages []pulsix.Message) error {
+func (p *Pub) SendBatch(ctx context.Context, messages []pulsix.Message,
+	headerBuf []byte) error {
+
 	if len(messages) == 0 {
 		return ErrEmptyMessages
 	}
 
-	reader := pulsix.NewReaderFromMessages(messages, p.options.GenerateIDFunc)
+	reader := pulsix.NewReaderFromMessages(messages, p.options.GenerateIDFunc,
+		headerBuf)
 
 	key := generatePulsixKey(p.options.Prefix)
 

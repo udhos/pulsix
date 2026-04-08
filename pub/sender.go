@@ -234,6 +234,8 @@ func (s *Sender) flushLoop() {
 		return base
 	}
 
+	headerBuf := make([]byte, 0, 128) // Reusable buffer for encoding message headers
+
 	// flush attempts to send the batch and handles retry/failure logic.
 	// Returns true if batch was successfully persisted.
 	flush := func(batch []pendingMessage) bool {
@@ -254,7 +256,7 @@ func (s *Sender) flushLoop() {
 		}
 
 		// Attempt to send.
-		err := s.pub.SendBatch(context.Background(), msgs)
+		err := s.pub.SendBatch(context.Background(), msgs, headerBuf)
 		if err == nil {
 			// Success: advance watermark and emit ack.
 			s.lastAckedID = maxID

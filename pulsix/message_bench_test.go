@@ -7,24 +7,24 @@ import (
 )
 
 /*
-BASELINE
+EncodeTLV BASELINE VERSION:
 
 go test -bench=BenchmarkMessage -benchmem -run=^$ ./pulsix
 goos: linux
 goarch: amd64
 pkg: github.com/udhos/pulsix/pulsix
 cpu: 13th Gen Intel(R) Core(TM) i7-1360P
-BenchmarkMessageEncodeBodySmallOne-16      	  248454	      5576 ns/op	     504 B/op	       8 allocs/op
-BenchmarkMessageEncodeBodySmallFew-16      	    5160	    228059 ns/op	    2089 B/op	     206 allocs/op
-BenchmarkMessageEncodeBodySmallMany-16     	      66	  27988904 ns/op	  160603 B/op	   20006 allocs/op
-BenchmarkMessageEncodeBodyMediumOne-16     	  232702	      6617 ns/op	     520 B/op	      10 allocs/op
-BenchmarkMessageEncodeBodyMediumFew-16     	    3858	    291794 ns/op	    3689 B/op	     406 allocs/op
-BenchmarkMessageEncodeBodyMediumMany-16    	      44	  23038792 ns/op	  320660 B/op	   40006 allocs/op
-BenchmarkMessageEncodeBodyLargeOne-16      	   27278	     44036 ns/op	     536 B/op	      10 allocs/op
-BenchmarkMessageEncodeBodyLargeFew-16      	     294	   4057943 ns/op	    5296 B/op	     406 allocs/op
-BenchmarkMessageEncodeBodyLargeMany-16     	       3	 404453544 ns/op	  481453 B/op	   40009 allocs/op
+BenchmarkMessageEncodeBodySmallOne-16      	  188761	      6114 ns/op	     520 B/op	       6 allocs/op
+BenchmarkMessageEncodeBodySmallFew-16      	    7568	    230932 ns/op	     520 B/op	       6 allocs/op
+BenchmarkMessageEncodeBodySmallMany-16     	      52	  23922363 ns/op	     520 B/op	       6 allocs/op
+BenchmarkMessageEncodeBodyMediumOne-16     	  209595	      5586 ns/op	     520 B/op	       6 allocs/op
+BenchmarkMessageEncodeBodyMediumFew-16     	    4795	    297643 ns/op	     520 B/op	       6 allocs/op
+BenchmarkMessageEncodeBodyMediumMany-16    	      75	  23255807 ns/op	     520 B/op	       6 allocs/op
+BenchmarkMessageEncodeBodyLargeOne-16      	   27426	     43396 ns/op	     520 B/op	       6 allocs/op
+BenchmarkMessageEncodeBodyLargeFew-16      	     295	   4040231 ns/op	     520 B/op	       6 allocs/op
+BenchmarkMessageEncodeBodyLargeMany-16     	       3	 402366738 ns/op	     522 B/op	       6 allocs/op
 PASS
-ok  	github.com/udhos/pulsix/pulsix	11.723s
+ok  	github.com/udhos/pulsix/pulsix	12.106s
 */
 
 const (
@@ -81,8 +81,9 @@ func BenchmarkMessageEncodeBodyLargeMany(b *testing.B) {
 func benchMessageHelper(b *testing.B, bodySize, amount int) {
 	buf := make([]byte, blockReadSize)
 	messages := createTestMessages(bodySize, amount)
+	headerBuf := make([]byte, 0, 128) // Reusable buffer for encoding message headers
 	for b.Loop() {
-		reader := NewReaderFromMessages(messages, nil)
+		reader := NewReaderFromMessages(messages, nil, headerBuf)
 		if err := drainReader(reader, buf); err != nil {
 			b.Fatalf("drainReader: %v", err)
 		}

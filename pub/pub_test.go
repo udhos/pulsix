@@ -51,7 +51,9 @@ func TestSendBatch(t *testing.T) {
 		{Data: []byte("pulsix")},
 	}
 
-	err := pub.SendBatch(context.Background(), messages)
+	headerBuf := make([]byte, 0, 128) // Reusable buffer for encoding message headers
+
+	err := pub.SendBatch(context.Background(), messages, headerBuf)
 	if err != nil {
 		t.Fatalf("SendBatch failed: %v", err)
 	}
@@ -67,7 +69,9 @@ func TestSendBatchEmpty(t *testing.T) {
 	storage := &mockStorage{}
 	p := New(Options{Storage: storage})
 
-	err := p.SendBatch(context.Background(), []pulsix.Message{})
+	headerBuf := make([]byte, 0, 128) // Reusable buffer for encoding message headers
+
+	err := p.SendBatch(context.Background(), []pulsix.Message{}, headerBuf)
 	if !errors.Is(err, ErrEmptyMessages) {
 		t.Errorf("expected ErrEmptyMessages, got %v", err)
 	}

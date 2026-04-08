@@ -2,8 +2,8 @@ package pulsix
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
+	"strconv"
 
 	"github.com/segmentio/ksuid"
 )
@@ -35,55 +35,106 @@ func (m *Message) hasMetadata() bool {
 }
 
 // EncodeTLV encodes a single record body prefixed by its record length.
-func (m *Message) EncodeTLV(w io.Writer) error {
-	var attrBytes, metaBytes []byte
-	var attrHeader, metaHeader string
+func (m *Message) EncodeTLV(w io.Writer, headerBuf []byte) error {
+	var metaBytes, attrBytes []byte
+	var err error
 
-	// 1. Prepare Metadata
+	// 1. Marshalling (This is the only part that should allocate)
 	if m.hasMetadata() {
 		metaBytes, _ = json.Marshal(m.Metadata)
-		metaHeader = fmt.Sprintf("m:%d:j:", len(metaBytes)+2) // include encoding marker "j:"
 	}
-
-	// 2. Prepare Attributes
 	if len(m.Attributes) > 0 {
 		attrBytes, _ = json.Marshal(m.Attributes)
-		attrHeader = fmt.Sprintf("a:%d:j:", len(attrBytes)+2) // include encoding marker "j:"
 	}
 
-	// 3. Prepare Data
-	dataHeader := fmt.Sprintf("d:%d:", len(m.Data))
+	headerBuf = headerBuf[:0]
 
-	// 4. Calculate Total Record Length dynamically
-	totalLen := len(metaHeader) + len(metaBytes) +
-		len(attrHeader) + len(attrBytes) +
-		len(dataHeader) + len(m.Data)
+	// Calculate Metadata block size
+	metaTotal := 0
+	if len(metaBytes) > 0 {
+		headerBuf = headerBuf[:0]
+		headerBuf = append(headerBuf, 'm', ':')
+		headerBuf = strconv.AppendInt(headerBuf, int64(len(metaBytes)+2), 10)
+		headerBuf = append(headerBuf, ':', 'j', ':')
+		metaTotal = len(headerBuf) + len(metaBytes)
+	}
 
-	// 5. Write the record length prefix.
-	if _, err := fmt.Fprintf(w, "%d:", totalLen); err != nil {
+	// Calculate Attribute block size
+	attrTotal := 0
+	if len(attrBytes) > 0 {
+		headerBuf = headerBuf[:0]
+		headerBuf = append(headerBuf, 'a', ':')
+		headerBuf = strconv.AppendInt(headerBuf, int64(len(attrBytes)+2), 10)
+		headerBuf = append(headerBuf, ':', 'j', ':')
+		attrTotal = len(headerBuf) + len(attrBytes)
+	}
+
+	// Calculate Data block size
+	headerBuf = headerBuf[:0]
+	headerBuf = append(headerBuf, 'd', ':')
+	headerBuf = strconv.AppendInt(headerBuf, int64(len(m.Data)), 10)
+	headerBuf = append(headerBuf, ':')
+	dataTotal := len(headerBuf) + len(m.Data)
+
+	// 3. The true Total Length
+	totalLen := metaTotal + attrTotal + dataTotal
+
+	// 4. EXECUTION - Now we write for real
+
+	// Write Record Prefix "<total>:"
+	headerBuf = headerBuf[:0]
+	headerBuf = strconv.AppendInt(headerBuf, int64(totalLen), 10)
+	headerBuf = append(headerBuf, ':')
+	if _, err = w.Write(headerBuf); err != nil {
 		return err
 	}
 
-	// 6. Conditional Writes
-	if metaHeader != "" {
-		io.WriteString(w, metaHeader)
-		w.Write(metaBytes)
-	}
-	if attrHeader != "" {
-		io.WriteString(w, attrHeader)
-		w.Write(attrBytes)
+	// Write Metadata
+	if len(metaBytes) > 0 {
+		headerBuf = headerBuf[:0]
+		headerBuf = append(headerBuf, 'm', ':')
+		headerBuf = strconv.AppendInt(headerBuf, int64(len(metaBytes)+2), 10)
+		headerBuf = append(headerBuf, ':', 'j', ':')
+		if _, err = w.Write(headerBuf); err != nil {
+			return err
+		}
+		if _, err = w.Write(metaBytes); err != nil {
+			return err
+		}
 	}
 
-	// Always write data
-	io.WriteString(w, dataHeader)
-	_, err := w.Write(m.Data)
+	// Write Attributes
+	if len(attrBytes) > 0 {
+		headerBuf = headerBuf[:0]
+		headerBuf = append(headerBuf, 'a', ':')
+		headerBuf = strconv.AppendInt(headerBuf, int64(len(attrBytes)+2), 10)
+		headerBuf = append(headerBuf, ':', 'j', ':')
+		if _, err = w.Write(headerBuf); err != nil {
+			return err
+		}
+		if _, err = w.Write(attrBytes); err != nil {
+			return err
+		}
+	}
+
+	// Write Data
+	headerBuf = headerBuf[:0]
+	headerBuf = append(headerBuf, 'd', ':')
+	headerBuf = strconv.AppendInt(headerBuf, int64(len(m.Data)), 10)
+	headerBuf = append(headerBuf, ':')
+	if _, err = w.Write(headerBuf); err != nil {
+		return err
+	}
+	_, err = w.Write(m.Data)
 
 	return err
 }
 
 // NewReaderFromMessages is a helper function that creates a reader from
 // a slice of messages, encoding them in the p1 format.
-func NewReaderFromMessages(messages []Message, generateID func() string) io.Reader {
+func NewReaderFromMessages(messages []Message, generateID func() string,
+	headerBuf []byte) io.Reader {
+
 	pr, pw := io.Pipe()
 
 	go func() {
@@ -101,7 +152,7 @@ func NewReaderFromMessages(messages []Message, generateID func() string) io.Read
 			if generateID != nil {
 				m.Metadata.MessageID = generateID()
 			}
-			if err = m.EncodeTLV(pw); err != nil {
+			if err = m.EncodeTLV(pw, headerBuf); err != nil {
 				return
 			}
 		}
