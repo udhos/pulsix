@@ -212,17 +212,45 @@ Each TLV field holds a piece of the message.
 For `m` and `a`, the value encoding is an explicit single-byte marker.
 
 ```bash
+m:<length>:<encoding>:<value>
+a:<length>:<encoding>:<value>
+
+# j stands for JSON encoding:
 m:<length>:j:<value>
 a:<length>:j:<value>
+
+# k stands for key-value encoding:
+m:<length>:k:<value>
+a:<length>:k:<value>
 ```
 
-`j` stands for JSON encoding, is the only encoding defined in p1 so far and its support is **required** in both sending and parsing.
+- `j` stands for JSON encoding.
+- `k` stands for key-value encoding.
+
+**Encoding support status:**
+Support for `j` is currently mandatory for `m` and `a` for both producer and consumer.
+Support for `k` is optional and experimental.
 
 Length is the length of the value in ascii decimal, like "1234".
 Length is always surrounded by `:`.
 Similar to total_record_length, the length field accounts exactly the byte-length of the TLV payload field.
-For `m` and `a`, this payload is `<encoding>:<value>`, so length includes the `j:` marker.
+For `m` and `a`, this payload is `<encoding>:<value>`, so length includes the `<encoding>:` marker.
 For `d`, this payload is `<value>`.
+
+The `j` encoding is plain JSON. For example, the metadata `id=1234` would be encoded as `m:25:j:{"id":"1234"}`.
+
+The `k` encoding is a sequence of key-value pairs encoded as `<key-length>:<key-data><value-length>:<value-data>`.
+
+Example:
+
+- encoding: `k`
+- encoding prefix: `k:` (2 bytes)
+- attribute1: key=value => `3:key5:value` (12 bytes)
+- attribute2: kk=vvv => `2:kk3:vvv` (9 bytes)
+
+Total size: 2 (encoding prefix) + 12 (attribute1) + 9 (attribute2) = 23 bytes
+
+Then the attribute TLV would be: `a:23:k:3:key5:value2:kk3:vvv`
 
 ### Storage Format Example
 
@@ -409,6 +437,7 @@ Consider a dual lane deployment.
 - [X] Add FAQ to README to address common questions and best practices.
 - [ ] Write a benchmark tool `pulsix-bench` that can profile a complete end-to-end flow from producer to consumer, measuring latency and throughput under various pulsix parameters. It should support both in-memory or real AWS backends. Its mode of operation is like this: 1) Generate a number of messages to a limit. 2) Use the package `inject` to send those messages. 3) Use a consumer side to read all those messages. 4) When finished, report metrics about latency and throughput.
 - [X] Add experimental package `inject` that factors out the consuming logic from `pulsix-ingress-random`, making it easier to build custom ingress tools that read from other sources (Kafka, RabbitMQ, etc) and inject into Pulsix using the Send API. The package would build on the `pub.Sender`. It would take two inputs: 1) A channel for receiving messages to be sent. 2) A callback function to report the message was reliably sent.
-- [ ] Benchmark p1 encode/decode.
+- [X] Benchmark p1 encoding.
+- [ ] Benchmark p1 decoding.
 - [ ] If benchmarking proves we have much room for improvement, consider faster encoding formats for TLV types `m` and `a`, which currently only use JSON.
 - [ ] In addition to the three batch closing triggers (age, message count, bytes), add a fourth trigger: a silence in incoming messages. `batchCloseSilenceDuration`. If there is no new message to be sent for a configured duration, the current batch will be flushed. This adds natural batching. When messages are coming in bursts, they will be efficiently batched by the existing triggers. When messages are coming in a slow trickle, the silence trigger will ensure they don't get stuck in limbo for too long waiting for the other triggers to fire.
