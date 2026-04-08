@@ -42,6 +42,7 @@ type configFlags struct {
 	ackBuffer     int
 	hardFail      time.Duration
 	senderDebug   bool
+	disableMsgID  bool
 
 	injectBuffer int
 
@@ -291,6 +292,12 @@ func main() {
 		Options: pub.Options{
 			Storage: backend.storage,
 			Prefix:  cfg.prefix,
+			GenerateIDFunc: func() string {
+				if cfg.disableMsgID {
+					return ""
+				}
+				return pulsix.GenerateID()
+			},
 		},
 		FlushThresholdAge:      cfg.flushAge,
 		FlushThresholdMessages: cfg.flushMessages,
@@ -369,6 +376,7 @@ func parseFlags() configFlags {
 	flag.IntVar(&cfg.ackBuffer, "ack-buffer", pub.DefaultAckChannelSize, "sender ack channel size")
 	flag.DurationVar(&cfg.hardFail, "hard-fail-deadline", pub.HardFailDeadline, "sender hard-fail deadline")
 	flag.BoolVar(&cfg.senderDebug, "sender-debug", false, "enable sender debug logs")
+	flag.BoolVar(&cfg.disableMsgID, "disable-message-id", false, "disable metadata message ID generation")
 
 	flag.IntVar(&cfg.injectBuffer, "inject-buffer", inject.DefaultBufferSize, "injector channel buffer size")
 	flag.DurationVar(&cfg.consumerIdleSleep, "consumer-idle-sleep", 100*time.Millisecond, "consumer sleep duration when no batches are available")
