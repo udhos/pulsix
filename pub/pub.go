@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/segmentio/ksuid"
@@ -13,9 +12,6 @@ import (
 )
 
 const (
-	// VersionP1 is version 1.
-	VersionP1 = "p1"
-
 	// TagData is TLV type for user data.
 	TagData = 'd'
 
@@ -41,16 +37,11 @@ type Options struct {
 // New creates a new Pub instance with the provided Storage implementation.
 func New(options Options) *Pub {
 	if options.GenerateIDFunc == nil {
-		options.GenerateIDFunc = generateID
+		options.GenerateIDFunc = pulsix.GenerateID
 	}
 	return &Pub{
 		options: options,
 	}
-}
-
-func generateID() string {
-	id, _ := ksuid.NewRandom()
-	return id.String()
 }
 
 // generatePulsixKey generate a key in this format:
@@ -76,30 +67,11 @@ func (p *Pub) SendBatch(ctx context.Context, messages []pulsix.Message) error {
 		return ErrEmptyMessages
 	}
 
-	pr, pw := io.Pipe()
-
-	go func() {
-		var err error
-		defer func() {
-			// Only close with an error if one actually occurred
-			pw.CloseWithError(err)
-		}()
-
-		if _, err = io.WriteString(pw, VersionP1+":"); err != nil {
-			return
-		}
-
-		for _, m := range messages {
-			m.Metadata.MessageID = p.options.GenerateIDFunc()
-			if err = m.EncodeTLV(pw); err != nil {
-				return
-			}
-		}
-	}()
+	reader := pulsix.NewReaderFromMessages(messages, p.options.GenerateIDFunc)
 
 	key := generatePulsixKey(p.options.Prefix)
 
 	// PutObject handles the stream. Notification happens outside this func
 	// or via S3 bucket notification config.
-	return p.options.Storage.PutObject(ctx, key, pr, -1)
+	return p.options.Storage.PutObject(ctx, key, reader, -1)
 }

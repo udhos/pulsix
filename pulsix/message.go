@@ -4,6 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+
+	"github.com/segmentio/ksuid"
+)
+
+const (
+	// VersionP1 is version 1.
+	VersionP1 = "p1"
 )
 
 // Message represents a message.
@@ -32,19 +39,19 @@ func (m *Message) EncodeTLV(w io.Writer) error {
 	var attrBytes, metaBytes []byte
 	var attrHeader, metaHeader string
 
-	// 1. Prepare Metadata (only if MessageID is set)
+	// 1. Prepare Metadata
 	if m.hasMetadata() {
 		metaBytes, _ = json.Marshal(m.Metadata)
 		metaHeader = fmt.Sprintf("m:%d:j:", len(metaBytes)+2) // include encoding marker "j:"
 	}
 
-	// 2. Prepare Attributes (only if map is not empty)
+	// 2. Prepare Attributes
 	if len(m.Attributes) > 0 {
 		attrBytes, _ = json.Marshal(m.Attributes)
 		attrHeader = fmt.Sprintf("a:%d:j:", len(attrBytes)+2) // include encoding marker "j:"
 	}
 
-	// 3. Prepare Data (Always included)
+	// 3. Prepare Data
 	dataHeader := fmt.Sprintf("d:%d:", len(m.Data))
 
 	// 4. Calculate Total Record Length dynamically
@@ -72,4 +79,39 @@ func (m *Message) EncodeTLV(w io.Writer) error {
 	_, err := w.Write(m.Data)
 
 	return err
+}
+
+// NewReaderFromMessages is a helper function that creates a reader from
+// a slice of messages, encoding them in the p1 format.
+func NewReaderFromMessages(messages []Message, generateID func() string) io.Reader {
+	pr, pw := io.Pipe()
+
+	go func() {
+		var err error
+		defer func() {
+			// Only close with an error if one actually occurred
+			pw.CloseWithError(err)
+		}()
+
+		if _, err = io.WriteString(pw, VersionP1+":"); err != nil {
+			return
+		}
+
+		for _, m := range messages {
+			if generateID != nil {
+				m.Metadata.MessageID = generateID()
+			}
+			if err = m.EncodeTLV(pw); err != nil {
+				return
+			}
+		}
+	}()
+
+	return pr
+}
+
+// GenerateID generates a unique ID.
+func GenerateID() string {
+	id, _ := ksuid.NewRandom()
+	return id.String()
 }
