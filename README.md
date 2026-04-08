@@ -123,7 +123,7 @@ if `AckChan` is not drained, sender progress can stall once the ack buffer is fu
 
 When `SendBatch()` returns without error, the data in that explicit batch is guaranteed to be durable in S3 and eventually visible to consumers via SQS.
 
-`SendBatch()` is easier to use but its direct usage is discouraged because it allows for inefficient small batches. The `Send()` API is designed to automatically accumulate messages into efficient batches, so it is the recommended approach for most use cases.
+`SendBatch()` is easier to use but its direct usage is discouraged because it allows for inefficient small batches.
 
 The SendBatch API writes messages in batches to S3, triggering a SQS notification for each batch. The SQS message contains the S3 object key, which serves as the pointer to the batch of messages.
 
