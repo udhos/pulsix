@@ -376,7 +376,7 @@ Program | Status | Description
 `pulsix-ingress-sqs`    | ✅ Ready.   | Sample ingress tool that reads from SQS and injects into Pulsix using package inject.
 `pulsix-ingress-random` | ✅ Ready.   | Reference ingress model that generates random batches and injects them into Pulsix using package inject.
 `pulsix-bench`          | ✅ Ready.   | Benchmark tool to profile end-to-end flow from producer to consumer, measuring latency and throughput under various Pulsix parameters.
-`pulsix-dispatcher`     | 🛠️ Planned. | It will forward messages from Pulsix to other systems (SNS, SQS, another Pulsix, etc).
+`pulsix-dispatcher`     | 🛠️ Planned. | It will forward messages from Pulsix to other systems (SNS, SQS, another Pulsix, etc). Important features: fanout, filtering.
 
 # Running the example clients
 
@@ -429,7 +429,7 @@ Consider a dual lane deployment.
 - [ ] Metrics.
 - [ ] Replace DeleteMessage with DeleteMessageBatch for better efficiency.
 - [ ] Review logs.
-- [ ] `pulsix-dispatcher` is an app/service/daemon that consumes Pulsix and directs to other systems (possible targets: another Pulsix, SNS, SQS, S3).
+- [ ] `pulsix-dispatcher` is an app/service/daemon that consumes Pulsix and directs to other systems (possible targets: another Pulsix, SNS, SQS, S3). Must support fanout and filtering. For example, it can read messages from Pulsix and forward to multiple SQS queues based on message attributes.
 - [x] `pulsix-ingress-sqs`: sample injection tool (reads from SQS, injects into Pulsix).
 - [x] Add explicit encoding for metadata and attribute.
 - [x] Add primary API that automatically accumulates messages into batches and flushes them on limited periods. It must somehow signal the caller when specific messages were secured into reliable delivery, allowing the caller to mark them as delivered.
