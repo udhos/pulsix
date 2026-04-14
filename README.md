@@ -104,7 +104,6 @@ sender := pub.NewSender(pub.SendOptions{
     Prefix:  "events",
   },
   FlushThresholdAge:      time.Second,
-  FlushThresholdMessages: 10_000,
   FlushThresholdBytes:    50 * 1024 * 1024,
   AckChannelSize:         100,
 })
