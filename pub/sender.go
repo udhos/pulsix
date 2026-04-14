@@ -20,6 +20,11 @@ const (
 	// DefaultAckChannelSize is the default buffer size for AckChan.
 	DefaultAckChannelSize = 100
 
+	// DefaultInboxSize is the default buffer size for the inbox channel that holds
+	// pending messages before they are flushed. This should be sized to accommodate
+	// the expected burstiness of incoming messages without causing excessive memory usage.
+	DefaultInboxSize = 20_000
+
 	// HardFailDeadline is the default retry window before declaring a hard-fail boundary.
 	// Keep this default for production; test code may override it to speed up failure-path tests.
 	HardFailDeadline = 10 * time.Second
@@ -40,6 +45,11 @@ type SendOptions struct {
 	// AckChannelSize is the buffer size for AckChan.
 	// Defaults to DefaultAckChannelSize.
 	AckChannelSize int
+
+	// InboxSize is the buffer size for the inbox channel that holds
+	// pending messages before they are flushed.
+	// Defaults to 20,000.
+	InboxSize int
 
 	// HardFailDeadline is the maximum time to retry a failed batch before
 	// reporting a hard-fail boundary. Defaults to the package HardFailDeadline.
@@ -108,6 +118,9 @@ func NewSender(opts SendOptions) *Sender {
 	if opts.AckChannelSize == 0 {
 		opts.AckChannelSize = DefaultAckChannelSize
 	}
+	if opts.InboxSize == 0 {
+		opts.InboxSize = DefaultInboxSize
+	}
 	if opts.HardFailDeadline == 0 {
 		opts.HardFailDeadline = HardFailDeadline
 	}
@@ -115,7 +128,7 @@ func NewSender(opts SendOptions) *Sender {
 	s := &Sender{
 		pub:   New(opts.Options),
 		opts:  opts,
-		inbox: make(chan pendingMessage, 10_000), // FIXME: What is a good value?
+		inbox: make(chan pendingMessage, opts.InboxSize),
 		ackCh: make(chan Ack, opts.AckChannelSize),
 		done:  make(chan struct{}),
 	}
