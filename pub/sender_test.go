@@ -22,9 +22,8 @@ func newTestSender(t *testing.T) (*Sender, *mockStorage) {
 				return "FIXED_ID_FOR_TESTING_1234567"
 			},
 		},
-		FlushThresholdAge:      100 * time.Millisecond,
-		FlushThresholdMessages: 10_000,
-		FlushThresholdBytes:    50 * 1024 * 1024,
+		FlushThresholdAge:   100 * time.Millisecond,
+		FlushThresholdBytes: 50 * 1024 * 1024,
 	})
 	return sender, store
 }
@@ -83,9 +82,8 @@ func TestSender_ConcurrentSenders(t *testing.T) {
 			Prefix:         "test",
 			GenerateIDFunc: func() string { return "FIXED_ID_FOR_TESTING_1234567" },
 		},
-		FlushThresholdAge:      10 * time.Millisecond,
-		FlushThresholdMessages: 64,
-		FlushThresholdBytes:    50 * 1024 * 1024,
+		FlushThresholdAge:   10 * time.Millisecond,
+		FlushThresholdBytes: 50 * 1024 * 1024,
 	})
 	defer sender.Close()
 
@@ -155,37 +153,6 @@ func TestSender_ConcurrentSenders(t *testing.T) {
 	}
 }
 
-func TestSender_FlushThresholdMessages(t *testing.T) {
-	store := &mockStorage{}
-	sender := NewSender(SendOptions{
-		Options: Options{
-			Storage:        store,
-			Prefix:         "test",
-			GenerateIDFunc: func() string { return "FIXED_ID_FOR_TESTING_1234567" },
-		},
-		FlushThresholdAge:      10 * time.Second, // long age so only message count triggers
-		FlushThresholdMessages: 3,
-		FlushThresholdBytes:    50 * 1024 * 1024,
-	})
-	defer sender.Close()
-
-	for i := range 3 {
-		_, err := sender.Send(context.Background(), pulsix.Message{Data: []byte{byte(i)}})
-		if err != nil {
-			t.Fatalf("Send failed: %v", err)
-		}
-	}
-
-	select {
-	case ack := <-sender.AckChan():
-		if ack.AckedUpTo != 2 {
-			t.Errorf("expected AckedUpTo=2, got %d", ack.AckedUpTo)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for ack after message threshold")
-	}
-}
-
 func TestSender_CloseFlushesRemaining(t *testing.T) {
 	sender, _ := newTestSender(t)
 
@@ -230,10 +197,9 @@ func TestSender_HardFailAfterRetries(t *testing.T) {
 				return "FIXED_ID_FOR_TESTING_1234567"
 			},
 		},
-		FlushThresholdAge:      50 * time.Millisecond, // short age for quick retry attempts
-		FlushThresholdMessages: 10,
-		FlushThresholdBytes:    50 * 1024 * 1024,
-		HardFailDeadline:       250 * time.Millisecond,
+		FlushThresholdAge:   50 * time.Millisecond, // short age for quick retry attempts
+		FlushThresholdBytes: 50 * 1024 * 1024,
+		HardFailDeadline:    250 * time.Millisecond,
 	})
 
 	// Send messages to trigger flush
@@ -285,10 +251,9 @@ func TestSender_ReuseAfterHardFail(t *testing.T) {
 				return "FIXED_ID_FOR_TESTING_1234567"
 			},
 		},
-		FlushThresholdAge:      50 * time.Millisecond,
-		FlushThresholdMessages: 10,
-		FlushThresholdBytes:    50 * 1024 * 1024,
-		HardFailDeadline:       250 * time.Millisecond,
+		FlushThresholdAge:   50 * time.Millisecond,
+		FlushThresholdBytes: 50 * 1024 * 1024,
+		HardFailDeadline:    250 * time.Millisecond,
 	})
 	defer sender.Close()
 

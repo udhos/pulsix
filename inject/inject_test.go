@@ -41,10 +41,9 @@ func newTestSender(storage *testStorage) *pub.Sender {
 				return "inject-fixed-id"
 			},
 		},
-		FlushThresholdAge:      20 * time.Millisecond,
-		FlushThresholdMessages: 10,
-		FlushThresholdBytes:    1024,
-		HardFailDeadline:       100 * time.Millisecond,
+		FlushThresholdAge:   20 * time.Millisecond,
+		FlushThresholdBytes: 1024,
+		HardFailDeadline:    100 * time.Millisecond,
 	})
 }
 

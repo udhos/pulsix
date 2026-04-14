@@ -14,9 +14,6 @@ const (
 	// DefaultFlushThresholdAge is the default maximum age of a batch before flushing.
 	DefaultFlushThresholdAge = time.Second
 
-	// DefaultFlushThresholdMessages is the default maximum number of messages per batch.
-	DefaultFlushThresholdMessages = 10_000
-
 	// DefaultFlushThresholdBytes is the default maximum byte size of a batch.
 	DefaultFlushThresholdBytes = int64(50 * 1024 * 1024) // 50MB
 
@@ -35,10 +32,6 @@ type SendOptions struct {
 	// FlushThresholdAge is the maximum age of a batch before it is flushed.
 	// Defaults to DefaultFlushThresholdAge.
 	FlushThresholdAge time.Duration
-
-	// FlushThresholdMessages is the maximum number of messages per batch.
-	// Defaults to DefaultFlushThresholdMessages.
-	FlushThresholdMessages int
 
 	// FlushThresholdBytes is the maximum size in bytes of a batch.
 	// Defaults to DefaultFlushThresholdBytes.
@@ -83,7 +76,7 @@ const (
 )
 
 // Sender is the async producer. It accumulates messages into batches and flushes
-// them automatically based on time, message count, and byte size thresholds.
+// them automatically based on time and byte size thresholds.
 // Send is goroutine-safe.
 type Sender struct {
 	pub       *Pub
@@ -109,9 +102,6 @@ func NewSender(opts SendOptions) *Sender {
 	if opts.FlushThresholdAge == 0 {
 		opts.FlushThresholdAge = DefaultFlushThresholdAge
 	}
-	if opts.FlushThresholdMessages == 0 {
-		opts.FlushThresholdMessages = DefaultFlushThresholdMessages
-	}
 	if opts.FlushThresholdBytes == 0 {
 		opts.FlushThresholdBytes = DefaultFlushThresholdBytes
 	}
@@ -125,7 +115,7 @@ func NewSender(opts SendOptions) *Sender {
 	s := &Sender{
 		pub:   New(opts.Options),
 		opts:  opts,
-		inbox: make(chan pendingMessage, opts.FlushThresholdMessages*2),
+		inbox: make(chan pendingMessage, 10_000), // FIXME: What is a good value?
 		ackCh: make(chan Ack, opts.AckChannelSize),
 		done:  make(chan struct{}),
 	}
@@ -308,8 +298,7 @@ func (s *Sender) flushLoop() {
 		batchSize += int64(len(pm.msg.Data))
 
 		// Check thresholds for immediate flush.
-		if len(batch) >= s.opts.FlushThresholdMessages ||
-			batchSize >= s.opts.FlushThresholdBytes {
+		if batchSize >= s.opts.FlushThresholdBytes {
 			if flush(batch) {
 				batch = nil
 				batchSize = 0

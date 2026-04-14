@@ -36,13 +36,12 @@ type configFlags struct {
 	prefix      string
 	timeout     time.Duration
 
-	flushAge      time.Duration
-	flushMessages int
-	flushBytes    int64
-	ackBuffer     int
-	hardFail      time.Duration
-	senderDebug   bool
-	disableMsgID  bool
+	flushAge     time.Duration
+	flushBytes   int64
+	ackBuffer    int
+	hardFail     time.Duration
+	senderDebug  bool
+	disableMsgID bool
 
 	injectBuffer int
 
@@ -299,12 +298,11 @@ func main() {
 				return pulsix.GenerateID()
 			},
 		},
-		FlushThresholdAge:      cfg.flushAge,
-		FlushThresholdMessages: cfg.flushMessages,
-		FlushThresholdBytes:    cfg.flushBytes,
-		AckChannelSize:         cfg.ackBuffer,
-		HardFailDeadline:       cfg.hardFail,
-		Debug:                  cfg.senderDebug,
+		FlushThresholdAge:   cfg.flushAge,
+		FlushThresholdBytes: cfg.flushBytes,
+		AckChannelSize:      cfg.ackBuffer,
+		HardFailDeadline:    cfg.hardFail,
+		Debug:               cfg.senderDebug,
 	})
 
 	runID := ksuid.New().String()
@@ -371,7 +369,6 @@ func parseFlags() configFlags {
 	flag.DurationVar(&cfg.timeout, "timeout", 2*time.Minute, "maximum total benchmark duration")
 
 	flag.DurationVar(&cfg.flushAge, "flush-age", pub.DefaultFlushThresholdAge, "sender flush threshold by age")
-	flag.IntVar(&cfg.flushMessages, "flush-messages", pub.DefaultFlushThresholdMessages, "sender flush threshold by number of messages")
 	flag.Int64Var(&cfg.flushBytes, "flush-bytes", pub.DefaultFlushThresholdBytes, "sender flush threshold by bytes")
 	flag.IntVar(&cfg.ackBuffer, "ack-buffer", pub.DefaultAckChannelSize, "sender ack channel size")
 	flag.DurationVar(&cfg.hardFail, "hard-fail-deadline", pub.HardFailDeadline, "sender hard-fail deadline")
@@ -398,9 +395,6 @@ func validateFlags(cfg configFlags) error {
 	}
 	if cfg.payloadSize < 0 {
 		return fmt.Errorf("-payload-size must be >= 0")
-	}
-	if cfg.flushMessages <= 0 {
-		return fmt.Errorf("-flush-messages must be > 0")
 	}
 	if cfg.flushBytes <= 0 {
 		return fmt.Errorf("-flush-bytes must be > 0")

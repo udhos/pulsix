@@ -444,4 +444,4 @@ Consider a dual lane deployment.
 - [ ] Review we are parsing the batch file in a streaming way, without loading the whole batch into memory. If not, refactor the code to achieve that.
 - [ ] Design a StreamBatch API that starts uploading a batch as soon as the first message is sent, and then keeps streaming messages into that batch until it is closed. We would use the usual four signals (age, message count, bytes, silence) to close the batch. This design has potential to bring down latency. Start by creating tests to validate the latency reduction compared to the existing  SendBatch API.
 - [ ] Discover if we need to add some support for DLQ.
-- [ ] Remove message count as batch limit.
+- [X] Remove message count as batch limit.

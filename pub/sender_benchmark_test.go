@@ -38,9 +38,8 @@ func BenchmarkSenderInject100k(b *testing.B) {
 				Storage: benchmarkStorage{},
 				Prefix:  "bench",
 			},
-			FlushThresholdAge:      time.Hour,
-			FlushThresholdMessages: 10_000,
-			FlushThresholdBytes:    50 * 1024 * 1024,
+			FlushThresholdAge:   time.Hour,
+			FlushThresholdBytes: 50 * 1024 * 1024,
 		})
 
 		for range benchmarkMessageCount {
@@ -69,9 +68,8 @@ func BenchmarkSenderInject100kConcurrent8(b *testing.B) {
 				Storage: benchmarkStorage{},
 				Prefix:  "bench",
 			},
-			FlushThresholdAge:      time.Hour,
-			FlushThresholdMessages: 10_000,
-			FlushThresholdBytes:    50 * 1024 * 1024,
+			FlushThresholdAge:   time.Hour,
+			FlushThresholdBytes: 50 * 1024 * 1024,
 		})
 
 		base := benchmarkMessageCount / workers
@@ -116,9 +114,8 @@ func BenchmarkSenderTimeBasedFlush(b *testing.B) {
 				Storage: benchmarkStorage{},
 				Prefix:  "bench",
 			},
-			FlushThresholdAge:      5 * time.Millisecond,
-			FlushThresholdMessages: benchmarkMessageCount * 10,
-			FlushThresholdBytes:    1 << 40, // 1TB effectively disables size-based flush
+			FlushThresholdAge:   5 * time.Millisecond,
+			FlushThresholdBytes: 1 << 40, // 1TB effectively disables size-based flush
 		})
 
 		for range 1000 {
