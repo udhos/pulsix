@@ -15,7 +15,7 @@ const (
 	DefaultFlushThresholdAge = time.Second
 
 	// DefaultFlushThresholdBytes is the default maximum byte size of a batch.
-	DefaultFlushThresholdBytes = int64(50 * 1024 * 1024) // 50MB
+	DefaultFlushThresholdBytes = int64(100_000_000) // 100MB
 
 	// DefaultAckChannelSize is the default buffer size for AckChan.
 	DefaultAckChannelSize = 100

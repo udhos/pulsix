@@ -363,8 +363,8 @@ func parseFlags() configFlags {
 
 	flag.StringVar(&cfg.backend, "backend", "sim", "backend to use: sim or aws")
 
-	flag.IntVar(&cfg.messages, "messages", 10000, "number of messages to publish and consume")
-	flag.IntVar(&cfg.payloadSize, "payload-size", 1000, "message payload size in bytes")
+	flag.IntVar(&cfg.messages, "messages", 200000, "number of messages to publish and consume")
+	flag.IntVar(&cfg.payloadSize, "payload-size", 10000, "message payload size in bytes")
 	flag.StringVar(&cfg.prefix, "prefix", "events", "pulsix object key prefix")
 	flag.DurationVar(&cfg.timeout, "timeout", 2*time.Minute, "maximum total benchmark duration")
 
