@@ -374,6 +374,7 @@ Program | Status | Description
 `pulsix-sub-example`    | ✅ Ready.   | Example consumer that receives messages from Pulsix using filesystem storage (for testing).
 `pulsix-ingress-sqs`    | ✅ Ready.   | Sample ingress tool that reads from SQS and injects into Pulsix using package inject.
 `pulsix-ingress-random` | ✅ Ready.   | Reference ingress model that generates random batches and injects them into Pulsix using package inject.
+`pulsix-ingress-http`   | ✅ Ready.   | HTTP server that accepts messages via REST API and injects them into Pulsix using package inject.
 `pulsix-bench`          | ✅ Ready.   | Benchmark tool to profile end-to-end flow from producer to consumer, measuring latency and throughput under various Pulsix parameters.
 `pulsix-dispatcher`     | 🛠️ Planned. | It will forward messages from Pulsix to other systems (SNS, SQS, another Pulsix, etc). Important features: fanout, filtering.
 
@@ -391,6 +392,12 @@ BUCKET=bucket-name pulsix-ingress-random
 
 # inject from source SQS into Pulsix using Send API
 BUCKET=bucket-name QUEUE_URL=https://sqs.us-east-1.amazonaws.com/123412341234/source-queue pulsix-ingress-sqs
+
+# accept HTTP POST requests and inject into Pulsix using Send API
+BUCKET=bucket-name LISTEN_ADDR=:8080 pulsix-ingress-http
+
+# publish one message and wait for Pulsix durability acknowledgement
+curl -X POST http://127.0.0.1:8080/messages --data-binary 'hello pulsix'
 ```
 
 # FAQ
