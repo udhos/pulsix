@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
@@ -159,8 +160,8 @@ pollLoop:
 				continue
 			}
 
-			payload := []byte(*m.Body)
-			receipt := *m.ReceiptHandle
+			payload := []byte(aws.ToString(m.Body))
+			receipt := aws.ToString(m.ReceiptHandle)
 
 			select {
 			case inj.C <- inject.InjectMessage{Receipt: receipt, Data: payload}:
