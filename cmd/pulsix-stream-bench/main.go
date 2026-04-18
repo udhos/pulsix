@@ -464,8 +464,15 @@ func buildBackend(ctx context.Context, cfg configFlags) (benchBackend, error) {
 			log.Printf("sim backend dir kept at: %s", baseDir)
 		}
 
+		var f func(key string)
+		if cfg.milestones {
+			f = func(key string) {
+				fmt.Printf("📣 SQS: Notifying new batch at %s\n", key)
+			}
+		}
+
 		return benchBackend{
-			storage: &pulsix.SimulatedStorage{BaseDir: dataDir, QueueDir: queueDir},
+			storage: &pulsix.SimulatedStorage{BaseDir: dataDir, QueueDir: queueDir, LogNewBatch: f},
 			queue:   &sub.FileQueue{Dir: queueDir},
 			cleanup: cleanup,
 		}, nil

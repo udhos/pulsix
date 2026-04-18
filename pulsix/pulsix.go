@@ -4,7 +4,6 @@ package pulsix
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -21,8 +20,9 @@ type Storage interface {
 
 // SimulatedStorage wraps local file writes with a "Notification" trigger.
 type SimulatedStorage struct {
-	BaseDir  string
-	QueueDir string
+	BaseDir     string
+	QueueDir    string
+	LogNewBatch func(key string)
 }
 
 // PutObject simulates writing to S3 and then creates a notification in the "SQS" folder.
@@ -48,7 +48,10 @@ func (s *SimulatedStorage) PutObject(_ context.Context, key string, r io.Reader,
 
 	notifData, _ := json.Marshal(map[string]string{"s3_key": key})
 
-	fmt.Printf("📣 SQS: Notifying new batch at %s\n", key)
+	if s.LogNewBatch != nil {
+		s.LogNewBatch(key)
+	}
+
 	return os.WriteFile(notifPath, notifData, 0644)
 }
 
