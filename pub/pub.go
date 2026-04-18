@@ -11,17 +11,6 @@ import (
 	"github.com/udhos/pulsix/pulsix"
 )
 
-const (
-	// TagData is TLV type for user data.
-	TagData = 'd'
-
-	// TagMeta is TLV type for internal metadata.
-	TagMeta = 'm'
-
-	// TagAttr is TLV type for user attributes.
-	TagAttr = 'a'
-)
-
 // Pub is the main struct for the pulsix publisher. It provides methods to send messages to S3.
 type Pub struct {
 	options Options

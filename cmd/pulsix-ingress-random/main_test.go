@@ -2,6 +2,8 @@ package main
 
 import (
 	"testing"
+
+	"github.com/udhos/pulsix/pulsix"
 )
 
 func TestSimpleRandomRangeBounds(t *testing.T) {
@@ -34,8 +36,9 @@ func TestBuildRandomBatchShape(t *testing.T) {
 			t.Fatalf("unexpected payload length at i=%d: got=%d want=%d", i, got, payloadSize)
 		}
 		for j, b := range msg.Data {
-			if b != 'a' {
-				t.Fatalf("unexpected payload byte at i=%d j=%d: got=%q want='a'", i, j, b)
+			if b != pulsix.TagAttr {
+				t.Fatalf("unexpected payload byte at i=%d j=%d: got=%q want=%q",
+					i, j, b, pulsix.TagAttr)
 			}
 		}
 	}

@@ -9,8 +9,20 @@ import (
 )
 
 const (
-	// VersionP1 is version 1.
+	// VersionP1 is pulsix version 1.
 	VersionP1 = "p1"
+
+	// TagData is TLV type for user data.
+	TagData = 'd'
+
+	// TagMeta is TLV type for internal metadata.
+	TagMeta = 'm'
+
+	// TagAttr is TLV type for user attributes.
+	TagAttr = 'a'
+
+	// TLVEncodingJSON indicates that the TLV value is JSON encoded.
+	TLVEncodingJSON = 'j'
 )
 
 // Message represents a message.
@@ -53,9 +65,9 @@ func (m *Message) EncodeTLV(w io.Writer, headerBuf []byte) error {
 	metaTotal := 0
 	if len(metaBytes) > 0 {
 		headerBuf = headerBuf[:0]
-		headerBuf = append(headerBuf, 'm', ':')
+		headerBuf = append(headerBuf, TagMeta, ':')
 		headerBuf = strconv.AppendInt(headerBuf, int64(len(metaBytes)+2), 10)
-		headerBuf = append(headerBuf, ':', 'j', ':')
+		headerBuf = append(headerBuf, ':', TLVEncodingJSON, ':')
 		metaTotal = len(headerBuf) + len(metaBytes)
 	}
 
@@ -63,15 +75,15 @@ func (m *Message) EncodeTLV(w io.Writer, headerBuf []byte) error {
 	attrTotal := 0
 	if len(attrBytes) > 0 {
 		headerBuf = headerBuf[:0]
-		headerBuf = append(headerBuf, 'a', ':')
+		headerBuf = append(headerBuf, TagAttr, ':')
 		headerBuf = strconv.AppendInt(headerBuf, int64(len(attrBytes)+2), 10)
-		headerBuf = append(headerBuf, ':', 'j', ':')
+		headerBuf = append(headerBuf, ':', TLVEncodingJSON, ':')
 		attrTotal = len(headerBuf) + len(attrBytes)
 	}
 
 	// Calculate Data block size
 	headerBuf = headerBuf[:0]
-	headerBuf = append(headerBuf, 'd', ':')
+	headerBuf = append(headerBuf, TagData, ':')
 	headerBuf = strconv.AppendInt(headerBuf, int64(len(m.Data)), 10)
 	headerBuf = append(headerBuf, ':')
 	dataTotal := len(headerBuf) + len(m.Data)
@@ -92,9 +104,9 @@ func (m *Message) EncodeTLV(w io.Writer, headerBuf []byte) error {
 	// Write Metadata
 	if len(metaBytes) > 0 {
 		headerBuf = headerBuf[:0]
-		headerBuf = append(headerBuf, 'm', ':')
+		headerBuf = append(headerBuf, TagMeta, ':')
 		headerBuf = strconv.AppendInt(headerBuf, int64(len(metaBytes)+2), 10)
-		headerBuf = append(headerBuf, ':', 'j', ':')
+		headerBuf = append(headerBuf, ':', TLVEncodingJSON, ':')
 		if _, err = w.Write(headerBuf); err != nil {
 			return err
 		}
@@ -106,9 +118,9 @@ func (m *Message) EncodeTLV(w io.Writer, headerBuf []byte) error {
 	// Write Attributes
 	if len(attrBytes) > 0 {
 		headerBuf = headerBuf[:0]
-		headerBuf = append(headerBuf, 'a', ':')
+		headerBuf = append(headerBuf, TagAttr, ':')
 		headerBuf = strconv.AppendInt(headerBuf, int64(len(attrBytes)+2), 10)
-		headerBuf = append(headerBuf, ':', 'j', ':')
+		headerBuf = append(headerBuf, ':', TLVEncodingJSON, ':')
 		if _, err = w.Write(headerBuf); err != nil {
 			return err
 		}
@@ -119,7 +131,7 @@ func (m *Message) EncodeTLV(w io.Writer, headerBuf []byte) error {
 
 	// Write Data
 	headerBuf = headerBuf[:0]
-	headerBuf = append(headerBuf, 'd', ':')
+	headerBuf = append(headerBuf, TagData, ':')
 	headerBuf = strconv.AppendInt(headerBuf, int64(len(m.Data)), 10)
 	headerBuf = append(headerBuf, ':')
 	if _, err = w.Write(headerBuf); err != nil {

@@ -190,7 +190,7 @@ func (b *Batch) parseTLVs(data []byte) bool {
 }
 
 func (b *Batch) readTLVValue(data []byte, pos int, tag byte, valLen int) ([]byte, int, bool) {
-	if tag == 'm' || tag == 'a' {
+	if tag == pulsix.TagMeta || tag == pulsix.TagAttr {
 		// Metadata and attributes are encoded as: <tag>:<length>:<encoding>:<value>
 		// For m/a, <length> accounts for "<encoding>:<value>" bytes.
 		if pos+valLen > len(data) {
@@ -209,7 +209,7 @@ func (b *Batch) readTLVValue(data []byte, pos int, tag byte, valLen int) ([]byte
 			return nil, pos, false
 		}
 
-		if encoding != 'j' {
+		if encoding != pulsix.TLVEncodingJSON {
 			b.err = fmt.Errorf("unsupported encoding for %c: %q", tag, encoding)
 			return nil, pos, false
 		}
@@ -226,19 +226,19 @@ func (b *Batch) readTLVValue(data []byte, pos int, tag byte, valLen int) ([]byte
 
 func (b *Batch) applyTLV(tag byte, value []byte) bool {
 	switch tag {
-	case 'd':
+	case pulsix.TagData:
 		// Note: This slice points into recordBody.
 		// If the user needs it to persist, they must copy it.
 		b.current.Data = value
 		return true
-	case 'm':
+	case pulsix.TagMeta:
 		// The publisher sends JSON metadata: {"id":"XYZ"}
 		// We want to extract just "XYZ" for the struct field.
 		var temp pulsix.Metadata
 		if err := json.Unmarshal(value, &temp); err == nil && temp.MessageID != "" {
 			b.current.Metadata.MessageID = temp.MessageID
 		}
-	case 'a':
+	case pulsix.TagAttr:
 		// The P1 format stores attributes as a JSON object string.
 		// We unmarshal that directly into our map.
 		if len(value) > 0 {
