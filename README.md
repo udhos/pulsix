@@ -124,9 +124,9 @@ The `stream` package is a lower-level producer that starts uploading a batch as 
 
 This is useful when messages arrive gradually and you want lower time-to-first-byte to storage while still closing the batch on the usual operational signals: age, bytes, and silence.
 
-Unlike `pub.SendBatch()`, `stream.SendBatch()` appends a slice of messages to the current open streaming batch and does not imply durability yet. Durability happens only when that streaming batch is eventually closed and the underlying storage upload completes.
+Unlike `pub.SendBatch()`, `stream.SendBatch()` appends a slice of messages to the current open streaming batch and does not imply durability yet. `stream.SendBatch()` returns the starting offset of accepted messages in that call, while durability is reported later by `Options.AckCh` when the streaming batch is closed and the underlying storage upload completes.
 
-`stream.SendBatch()` accepts either one message or many messages in the slice. Multiple calls can append to the same open remote batch until that batch is closed by age, bytes, silence, or `Close()`.
+`stream.SendBatch()` accepts either one message or many messages in the slice. Multiple calls can append to the same open remote batch until that batch is closed by age, bytes, silence, or `Close()`. The durability ack reports a contiguous range (`offset`, `amount`) for that closed batch.
 
 Example setup and send loop:
 
@@ -139,10 +139,18 @@ publisher := stream.New(stream.Options{
   FlushThresholdAge:     time.Second,
   FlushThresholdBytes:   50 * 1024 * 1024,
   FlushThresholdSilence: 200 * time.Millisecond,
+  AckCh:                 ackCh,
 })
 
-if err := publisher.SendBatch(ctx, []pulsix.Message{{Data: []byte("hello")}}); err != nil {
+offset, err := publisher.SendBatch(ctx, []pulsix.Message{{Data: []byte("hello")}})
+if err != nil {
   log.Fatal(err)
+}
+_ = offset
+
+ack := <-ackCh
+if ack.Err != nil {
+  log.Fatal(ack.Err)
 }
 
 if err := publisher.Close(); err != nil {

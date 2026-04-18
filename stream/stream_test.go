@@ -264,7 +264,7 @@ func runStreamLatencyScenario(t *testing.T, store *completionTrackingStorage, ba
 				arrivalTimes[batchIndex] = append(arrivalTimes[batchIndex], now)
 			}
 
-			if err := publisher.SendBatch(context.Background(), group); err != nil {
+			if _, err := publisher.SendBatch(context.Background(), group); err != nil {
 				t.Fatalf("stream SendBatch failed for batch=%d group=%d: %v", batchIndex, groupIndex, err)
 			}
 
@@ -344,7 +344,7 @@ func TestStreamSingleBatchEncodesP1(t *testing.T) {
 		FlushThresholdSilence: time.Hour,
 	})
 
-	if err := publisher.SendBatch(context.Background(), []pulsix.Message{
+	if _, err := publisher.SendBatch(context.Background(), []pulsix.Message{
 		{Data: []byte("hello")},
 		{Data: []byte("pulsix")},
 	}); err != nil {
@@ -382,14 +382,14 @@ func TestStreamStartsUploadingBeforeBatchComplete(t *testing.T) {
 	})
 
 	streamStart := time.Now()
-	if err := streamPub.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("first")}}); err != nil {
+	if _, err := streamPub.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("first")}}); err != nil {
 		t.Fatalf("stream first SendBatch failed: %v", err)
 	}
 	streamFirstRead := streamStore.waitFirstRead(t).Sub(streamStart)
 
 	time.Sleep(gap)
 
-	if err := streamPub.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("second")}}); err != nil {
+	if _, err := streamPub.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("second")}}); err != nil {
 		t.Fatalf("stream second SendBatch failed: %v", err)
 	}
 	if err := streamPub.Close(); err != nil {
@@ -600,12 +600,12 @@ func TestStreamClosesBatchOnBytes(t *testing.T) {
 		FlushThresholdSilence: time.Hour,
 	})
 
-	if err := publisher.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("hello")}}); err != nil {
+	if _, err := publisher.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("hello")}}); err != nil {
 		t.Fatalf("first SendBatch failed: %v", err)
 	}
 	store.waitCount(t, 1)
 
-	if err := publisher.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("world")}}); err != nil {
+	if _, err := publisher.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("world")}}); err != nil {
 		t.Fatalf("second SendBatch failed: %v", err)
 	}
 	if err := publisher.Close(); err != nil {
@@ -627,12 +627,12 @@ func TestStreamClosesBatchOnAge(t *testing.T) {
 		FlushThresholdSilence: time.Hour,
 	})
 
-	if err := publisher.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("hello")}}); err != nil {
+	if _, err := publisher.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("hello")}}); err != nil {
 		t.Fatalf("SendBatch failed: %v", err)
 	}
 	store.waitCount(t, 1)
 
-	if err := publisher.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("world")}}); err != nil {
+	if _, err := publisher.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("world")}}); err != nil {
 		t.Fatalf("second SendBatch failed: %v", err)
 	}
 	if err := publisher.Close(); err != nil {
@@ -654,12 +654,12 @@ func TestStreamClosesBatchOnSilence(t *testing.T) {
 		FlushThresholdSilence: 20 * time.Millisecond,
 	})
 
-	if err := publisher.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("hello")}}); err != nil {
+	if _, err := publisher.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("hello")}}); err != nil {
 		t.Fatalf("SendBatch failed: %v", err)
 	}
 	store.waitCount(t, 1)
 
-	if err := publisher.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("world")}}); err != nil {
+	if _, err := publisher.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("world")}}); err != nil {
 		t.Fatalf("second SendBatch failed: %v", err)
 	}
 	if err := publisher.Close(); err != nil {
@@ -676,8 +676,72 @@ func TestStreamSendBatchEmpty(t *testing.T) {
 		_ = publisher.Close()
 	})
 
-	err := publisher.SendBatch(context.Background(), nil)
+	_, err := publisher.SendBatch(context.Background(), nil)
 	if err != ErrEmptyMessages {
 		t.Fatalf("expected ErrEmptyMessages, got %v", err)
+	}
+}
+
+func TestStreamSendBatchReturnsOffsetsAndAckRanges(t *testing.T) {
+	t.Parallel()
+
+	ackCh := make(chan Ack, 4)
+	publisher := New(Options{
+		Storage:               newTrackingStorage(),
+		Prefix:                "test",
+		FlushThresholdAge:     time.Hour,
+		FlushThresholdBytes:   1 << 20,
+		FlushThresholdSilence: 20 * time.Millisecond,
+		AckCh:                 ackCh,
+	})
+
+	offset0, err := publisher.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("a")}, {Data: []byte("b")}})
+	if err != nil {
+		t.Fatalf("first SendBatch failed: %v", err)
+	}
+	if offset0 != 0 {
+		t.Fatalf("expected first offset 0, got %d", offset0)
+	}
+
+	offset1, err := publisher.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("c")}})
+	if err != nil {
+		t.Fatalf("second SendBatch failed: %v", err)
+	}
+	if offset1 != 2 {
+		t.Fatalf("expected second offset 2, got %d", offset1)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	offset2, err := publisher.SendBatch(context.Background(), []pulsix.Message{{Data: []byte("d")}, {Data: []byte("e")}})
+	if err != nil {
+		t.Fatalf("third SendBatch failed: %v", err)
+	}
+	if offset2 != 3 {
+		t.Fatalf("expected third offset 3, got %d", offset2)
+	}
+
+	if err := publisher.Close(); err != nil {
+		t.Fatalf("close failed: %v", err)
+	}
+
+	ack1 := <-ackCh
+	if ack1.Err != nil {
+		t.Fatalf("unexpected first ack error: %v", ack1.Err)
+	}
+	if ack1.Offset != 0 || ack1.Amount != 3 {
+		t.Fatalf("unexpected first ack range: offset=%d amount=%d", ack1.Offset, ack1.Amount)
+	}
+
+	ack2 := <-ackCh
+	if ack2.Err != nil {
+		t.Fatalf("unexpected second ack error: %v", ack2.Err)
+	}
+	if ack2.Offset != 3 || ack2.Amount != 2 {
+		t.Fatalf("unexpected second ack range: offset=%d amount=%d", ack2.Offset, ack2.Amount)
+	}
+
+	if ack1.Key == "" || ack2.Key == "" {
+		t.Fatalf("expected non-empty ack keys: first=%q second=%q", ack1.Key, ack2.Key)
 	}
 }

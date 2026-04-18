@@ -36,6 +36,15 @@ type Options struct {
 	Storage pulsix.Storage
 	Prefix  string
 
+	// AckCh receives one durability result per closed batch.
+	//
+	// Single-owner contract: one logical caller owns a Pub instance. If many
+	// producers exist, they should coordinate and fan in through that owner.
+	//
+	// The emitted range [Offset, Offset+Amount) is contiguous and global for
+	// this Pub instance. When Err is nil, the whole range is durable.
+	AckCh chan<- Ack
+
 	// GenerateIDFunc optionally injects a metadata ID into every message.
 	GenerateIDFunc func() string
 
@@ -55,6 +64,14 @@ type Options struct {
 	InboxSize int
 }
 
+// Ack describes a durably completed storage batch.
+type Ack struct {
+	Offset uint64
+	Amount uint64
+	Key    string
+	Err    error
+}
+
 // Pub hosts the streaming publish state.
 type Pub struct {
 	opts Options
@@ -66,18 +83,27 @@ type Pub struct {
 	closeOnce sync.Once
 	uploadWG  sync.WaitGroup
 
-	errMu sync.Mutex
-	err   error
+	errMu      sync.Mutex
+	err        error
+	nextOffset uint64
 }
 
 type sendRequest struct {
 	ctx    context.Context
 	msgs   []pulsix.Message
-	result chan error
+	result chan sendResult
+}
+
+type sendResult struct {
+	offset uint64
+	err    error
 }
 
 type activeBatch struct {
 	writer    *io.PipeWriter
+	key       string
+	offset    uint64
+	amount    uint64
 	createdAt time.Time
 	lastWrite time.Time
 	dataBytes int64
@@ -111,44 +137,44 @@ func New(opts Options) *Pub {
 // The call returns after all messages have been encoded into the upload stream,
 // not after the storage write becomes durable. The batch remains open until one
 // of the configured close signals fires or Close is called.
-func (p *Pub) SendBatch(ctx context.Context, messages []pulsix.Message) error {
+func (p *Pub) SendBatch(ctx context.Context, messages []pulsix.Message) (uint64, error) {
 	if len(messages) == 0 {
-		return ErrEmptyMessages
+		return 0, ErrEmptyMessages
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if p.closed.Load() {
-		return ErrClosed
+		return 0, ErrClosed
 	}
 
 	req := sendRequest{
 		ctx:    ctx,
 		msgs:   messages,
-		result: make(chan error, 1),
+		result: make(chan sendResult, 1),
 	}
 
 	select {
 	case p.inbox <- req:
 	case <-ctx.Done():
-		return ctx.Err()
+		return 0, ctx.Err()
 	case <-p.loopDone:
 		if err := p.currentErr(); err != nil {
-			return err
+			return 0, err
 		}
-		return ErrClosed
+		return 0, ErrClosed
 	}
 
 	select {
-	case err := <-req.result:
-		return err
+	case res := <-req.result:
+		return res.offset, res.err
 	case <-ctx.Done():
-		return ctx.Err()
+		return 0, ctx.Err()
 	case <-p.loopDone:
 		if err := p.currentErr(); err != nil {
-			return err
+			return 0, err
 		}
-		return ErrClosed
+		return 0, ErrClosed
 	}
 }
 
@@ -219,9 +245,19 @@ func (p *Pub) run() {
 		if batch == nil {
 			return nil
 		}
-		err := batch.writer.Close()
+		closedBatch := batch
+		err := closedBatch.writer.Close()
 		batch = nil
 		stopAllTimers()
+		if p.opts.AckCh != nil {
+			ack := Ack{
+				Offset: closedBatch.offset,
+				Amount: closedBatch.amount,
+				Key:    closedBatch.key,
+				Err:    err,
+			}
+			p.opts.AckCh <- ack
+		}
 		if err != nil {
 			p.setErr(err)
 		}
@@ -231,6 +267,7 @@ func (p *Pub) run() {
 	startBatch := func(now time.Time) error {
 		key := pulsix.GeneratePulsixKey(p.opts.Prefix)
 		reader, writer := io.Pipe()
+		startOffset := p.nextOffset
 
 		p.uploadWG.Go(func() {
 			if err := p.opts.Storage.PutObject(context.Background(), key, reader, -1); err != nil {
@@ -246,6 +283,8 @@ func (p *Pub) run() {
 
 		batch = &activeBatch{
 			writer:    writer,
+			key:       key,
+			offset:    startOffset,
 			createdAt: now,
 			lastWrite: now,
 		}
@@ -260,7 +299,7 @@ func (p *Pub) run() {
 		for {
 			select {
 			case req := <-p.inbox:
-				req.result <- err
+				req.result <- sendResult{err: err}
 			default:
 				return
 			}
@@ -283,10 +322,11 @@ func (p *Pub) run() {
 
 		case req := <-p.inbox:
 			if err := p.currentErr(); err != nil {
-				req.result <- err
+				req.result <- sendResult{err: err}
 				continue
 			}
 
+			startOffset := p.nextOffset
 			var reqErr error
 			for _, msg := range req.msgs {
 				now := time.Now()
@@ -312,6 +352,8 @@ func (p *Pub) run() {
 
 				batch.lastWrite = now
 				batch.dataBytes += int64(len(msg.Data))
+				batch.amount++
+				p.nextOffset++
 				resetTimer(&silenceTimer, &silenceC, p.opts.FlushThresholdSilence)
 
 				if p.opts.FlushThresholdBytes > 0 && batch.dataBytes >= p.opts.FlushThresholdBytes {
@@ -323,11 +365,11 @@ func (p *Pub) run() {
 			}
 
 			if reqErr != nil {
-				req.result <- reqErr
+				req.result <- sendResult{err: reqErr}
 				continue
 			}
 
-			req.result <- p.currentErr()
+			req.result <- sendResult{offset: startOffset, err: p.currentErr()}
 		}
 	}
 }
