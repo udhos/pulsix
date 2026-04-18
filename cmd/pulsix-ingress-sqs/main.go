@@ -105,7 +105,7 @@ func main() {
 
 	var stats ingressStats
 
-	inj := inject.New(sender, func(receipt string) {
+	ackFunc := func(receipt string) {
 		atomic.AddUint64(&stats.Acked, 1)
 		_, err := sqsClient.DeleteMessage(context.Background(), &sqs.DeleteMessageInput{
 			QueueUrl:      &queueURL,
@@ -119,7 +119,9 @@ func main() {
 			return
 		}
 		atomic.AddUint64(&stats.DeletedSQS, 1)
-	}, injectBufferSize)
+	}
+
+	inj := inject.New(sender, ackFunc, injectBufferSize)
 
 	runErr := make(chan error, 1)
 	go func() {
