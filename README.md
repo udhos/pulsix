@@ -10,6 +10,7 @@ We only support Golang for now.
 * [How it works](#how-it-works)
   * [Producer](#producer)
     * [Package inject](#Package-inject)
+    * [Package streaminject](#package-streaminject)
     * [Send API](#send-api)
     * [Stream API](#stream-api)
     * [SendBatch API](#sendbatch-api)
@@ -46,16 +47,21 @@ Created by [gh-md-toc](https://github.com/ekalinin/github-markdown-toc.go)
 
 ## Producer
 
-There are four producing APIs, from high-level to low-level:
+There are five producing APIs, from high-level to low-level:
 
 1. Package inject
-2. Package pub Sender with Send() API
-3. Package stream with SendBatch() + Close() API
-4. Package pub with SendBatch() API
+2. Package streaminject
+3. Package pub Sender with Send() API
+4. Package stream with SendBatch() + Close() API
+5. Package pub with SendBatch() API
 
 ### Package inject
 
 The `Injector` from the `inject` package runs the state-machine to move messages across the states defined in the Send API. All the Injector needs is a channel of messages to be sent and a callback to report when messages are durably persisted. It strives to provide a simpler interface on top of the complex Send API, abstracting away the details of batching and acknowledgment handling.
+
+### Package streaminject
+
+The `streaminject` package provides an `Injector` built specifically on top of the experimental `stream` package. Since `stream.Pub` does not buffer message payloads in memory and cannot automatically retry on network failures, the `streaminject.Injector` handles this gracefully. It accepts messages via a Go channel, and if the underlying stream connection drops, it automatically tears down the dead publisher, spawns a new one, and requeues all unacknowledged messages without data loss. It fires a synchronous callback with your custom receipt string when a message is durably stored.
 
 ### Send API
 
@@ -418,6 +424,7 @@ Program | Status | Description
 `pulsix-ingress-random` | ✅ Ready.   | Reference ingress model that generates random batches and injects them into Pulsix using package inject.
 `pulsix-ingress-http`   | ✅ Ready.   | HTTP server that accepts messages via REST API and injects them into Pulsix using package inject.
 `pulsix-bench`          | ✅ Ready.   | Benchmark tool to profile end-to-end flow from producer to consumer, measuring latency and throughput under various Pulsix parameters.
+`pulsix-stream-bench`   | ✅ Ready.   | Benchmark tool tailored to profile the `streaminject` API end-to-end flow.
 `pulsix-dispatcher`     | 🛠️ Planned. | It will forward messages from Pulsix to other systems (SNS, SQS, another Pulsix, etc). Important features: fanout, filtering.
 
 # Running the example clients

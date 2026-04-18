@@ -3,6 +3,7 @@
 package stream
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
@@ -101,6 +102,7 @@ type sendResult struct {
 
 type activeBatch struct {
 	writer    *io.PipeWriter
+	bufWriter *bufio.Writer
 	key       string
 	offset    uint64
 	amount    uint64
@@ -246,6 +248,7 @@ func (p *Pub) run() {
 			return nil
 		}
 		closedBatch := batch
+		_ = closedBatch.bufWriter.Flush()
 		err := closedBatch.writer.Close()
 		batch = nil
 		stopAllTimers()
@@ -283,6 +286,7 @@ func (p *Pub) run() {
 
 		batch = &activeBatch{
 			writer:    writer,
+			bufWriter: bufio.NewWriterSize(writer, 64*1024),
 			key:       key,
 			offset:    startOffset,
 			createdAt: now,
@@ -341,7 +345,7 @@ func (p *Pub) run() {
 					msg.Metadata.MessageID = p.opts.GenerateIDFunc()
 				}
 
-				if err := msg.EncodeTLV(batch.writer, headerBuf); err != nil {
+				if err := msg.EncodeTLV(batch.bufWriter, headerBuf); err != nil {
 					_ = batch.writer.CloseWithError(err)
 					batch = nil
 					stopAllTimers()
@@ -367,6 +371,17 @@ func (p *Pub) run() {
 			if reqErr != nil {
 				req.result <- sendResult{err: reqErr}
 				continue
+			}
+
+			if batch != nil {
+				if err := batch.bufWriter.Flush(); err != nil {
+					_ = batch.writer.CloseWithError(err)
+					batch = nil
+					stopAllTimers()
+					p.setErr(err)
+					req.result <- sendResult{err: err}
+					continue
+				}
 			}
 
 			req.result <- sendResult{offset: startOffset, err: p.currentErr()}
