@@ -4,10 +4,7 @@ package pub
 import (
 	"context"
 	"errors"
-	"fmt"
-	"time"
 
-	"github.com/segmentio/ksuid"
 	"github.com/udhos/pulsix/pulsix"
 )
 
@@ -33,18 +30,6 @@ func New(options Options) *Pub {
 	}
 }
 
-// generatePulsixKey generate a key in this format:
-// <prefix>/YYYY-MM/DD/HH/MM/<id>.batch
-func generatePulsixKey(prefix string) string {
-	id, _ := ksuid.NewRandom()
-	now := time.Now().UTC()
-	return fmt.Sprintf("%s/%04d-%02d/%02d/%02d/%02d/%s.batch",
-		prefix,
-		now.Year(), now.Month(), now.Day(),
-		now.Hour(), now.Minute(),
-		id.String())
-}
-
 // ErrEmptyMessages is returned when SendBatch is called with an empty slice of messages.
 var ErrEmptyMessages = errors.New("no messages to send")
 
@@ -61,7 +46,7 @@ func (p *Pub) SendBatch(ctx context.Context, messages []pulsix.Message,
 	reader := pulsix.NewReaderFromMessages(messages, p.options.GenerateIDFunc,
 		headerBuf)
 
-	key := generatePulsixKey(p.options.Prefix)
+	key := pulsix.GeneratePulsixKey(p.options.Prefix)
 
 	// PutObject handles the stream. Notification happens outside this func
 	// or via S3 bucket notification config.

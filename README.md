@@ -11,6 +11,7 @@ We only support Golang for now.
   * [Producer](#producer)
     * [Package inject](#Package-inject)
     * [Send API](#send-api)
+    * [Stream API](#stream-api)
     * [SendBatch API](#sendbatch-api)
   * [Consumer](#consumer)
   * [Storage Format](#storage-format)
@@ -45,11 +46,12 @@ Created by [gh-md-toc](https://github.com/ekalinin/github-markdown-toc.go)
 
 ## Producer
 
-There are three producing APIs, from high-level to low-level:
+There are four producing APIs, from high-level to low-level:
 
 1. Package inject
 2. Package pub Sender with Send() API
-3. Package pub with SendBatch() API
+3. Package stream with SendBatch() + Close() API
+4. Package pub with SendBatch() API
 
 ### Package inject
 
@@ -57,7 +59,7 @@ The `Injector` from the `inject` package runs the state-machine to move messages
 
 ### Send API
 
-The API `Send()` accumulates messages automatically and flushes them in batches based on configured thresholds (age, message count, bytes).
+The API `Send()` accumulates messages automatically and flushes them in batches based on configured thresholds (age, bytes).
 
 ABSTRACT
 
@@ -115,6 +117,38 @@ id, err := sender.Send(ctx, pulsix.Message{Data: []byte("hello")})
 
 Note: the sender uses blocking ack delivery. Callers must keep draining `AckChan`;
 if `AckChan` is not drained, sender progress can stall once the ack buffer is full.
+
+### Stream API
+
+The `stream` package is a lower-level producer that starts uploading a batch as soon as the first `SendBatch()` call arrives, instead of waiting for the caller to assemble a complete durable batch and hand it off in one final call.
+
+This is useful when messages arrive gradually and you want lower time-to-first-byte to storage while still closing the batch on the usual operational signals: age, bytes, and silence.
+
+Unlike `pub.SendBatch()`, `stream.SendBatch()` appends a slice of messages to the current open streaming batch and does not imply durability yet. Durability happens only when that streaming batch is eventually closed and the underlying storage upload completes.
+
+`stream.SendBatch()` accepts either one message or many messages in the slice. Multiple calls can append to the same open remote batch until that batch is closed by age, bytes, silence, or `Close()`.
+
+Example setup and send loop:
+
+```go
+ctx := context.Background()
+
+publisher := stream.New(stream.Options{
+  Storage:               store,
+  Prefix:                "events",
+  FlushThresholdAge:     time.Second,
+  FlushThresholdBytes:   50 * 1024 * 1024,
+  FlushThresholdSilence: 200 * time.Millisecond,
+})
+
+if err := publisher.SendBatch(ctx, []pulsix.Message{{Data: []byte("hello")}}); err != nil {
+  log.Fatal(err)
+}
+
+if err := publisher.Close(); err != nil {
+  log.Fatal(err)
+}
+```
 
 ### SendBatch API
 
@@ -448,6 +482,6 @@ Consider a dual lane deployment.
 - [ ] If benchmarking proves we have much room for improvement, consider faster encoding formats for TLV types `m` and `a`, which currently only use JSON.
 - [ ] In addition to the two existing batch closing triggers (age, bytes), add a third trigger: a silence in incoming messages. `batchCloseSilenceDuration`. If there is no new message to be sent for a configured duration, the current batch will be flushed. This adds natural batching. When messages are coming in bursts, they will be efficiently batched by the existing triggers. When messages are coming in a slow trickle, the silence trigger will ensure they don't get stuck in limbo for too long waiting for the other triggers to fire.
 - [X] Review we are parsing the batch file in a streaming way, without loading the whole batch into memory. If not, refactor the code to achieve that.
-- [ ] Design a StreamBatch API that starts uploading a batch as soon as the first message is sent, and then keeps streaming messages into that batch until it is closed. We would use the usual three signals (age, bytes, silence) to close the batch. This design has potential to bring down latency. Start by creating tests to validate the latency reduction compared to the existing SendBatch API.
+- [X] Design a StreamBatch API that starts uploading a batch as soon as the first message is sent, and then keeps streaming messages into that batch until it is closed. We would use the usual three signals (age, bytes, silence) to close the batch. This design has potential to bring down latency. Start by creating tests to validate the latency reduction compared to the existing SendBatch API.
 - [ ] Discover if we need to add some support for DLQ.
 - [X] Remove message count as batch limit.

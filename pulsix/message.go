@@ -2,8 +2,10 @@ package pulsix
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"strconv"
+	"time"
 
 	"github.com/segmentio/ksuid"
 )
@@ -177,4 +179,16 @@ func NewReaderFromMessages(messages []Message, generateID func() string,
 func GenerateID() string {
 	id, _ := ksuid.NewRandom()
 	return id.String()
+}
+
+// GeneratePulsixKey generates a key in this format:
+// <prefix>/YYYY-MM/DD/HH/MM/<id>.batch
+func GeneratePulsixKey(prefix string) string {
+	id, _ := ksuid.NewRandom()
+	now := time.Now().UTC()
+	return fmt.Sprintf("%s/%04d-%02d/%02d/%02d/%02d/%s.batch",
+		prefix,
+		now.Year(), now.Month(), now.Day(),
+		now.Hour(), now.Minute(),
+		id.String())
 }
