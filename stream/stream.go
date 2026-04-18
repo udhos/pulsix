@@ -286,7 +286,7 @@ func (p *Pub) run() {
 
 		batch = &activeBatch{
 			writer:    writer,
-			bufWriter: bufio.NewWriterSize(writer, 64*1024),
+			bufWriter: bufio.NewWriterSize(writer, 512*1024),
 			key:       key,
 			offset:    startOffset,
 			createdAt: now,
