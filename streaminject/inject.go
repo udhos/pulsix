@@ -99,7 +99,7 @@ func (i *Injector) Run() error {
 				chunkSize := min(len(unsent), 1000)
 
 				msgs := make([]pulsix.Message, chunkSize)
-				for i := 0; i < chunkSize; i++ {
+				for i := range chunkSize {
 					msgs[i] = pulsix.Message{Data: unsent[i].Data}
 				}
 
@@ -115,7 +115,7 @@ func (i *Injector) Run() error {
 					break
 				}
 
-				for i := 0; i < chunkSize; i++ {
+				for i := range chunkSize {
 					unacked[offset+uint64(i)] = unsent[i]
 				}
 				unsent = unsent[chunkSize:]
